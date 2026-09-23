@@ -28,12 +28,28 @@
   var qs = {};
   (window.location.search || '').replace(/^\?/, '').split('&').forEach(function (kv) { var p = kv.split('='); if (p[0]) qs[p[0]] = decodeURIComponent(p[1] || '1'); });
 
-  renderer.setPixelRatio(qs.lite ? 1 : Math.min(window.devicePixelRatio || 1, 1.75));
-  renderer.shadowMap.enabled = !qs.lite;
+  /* Phones default to the light renderer (no shadows, lower pixel ratio); the pause menu can turn shadows back on. */
+  var MOBILE = !!(window.matchMedia && window.matchMedia('(pointer: coarse) and (hover: none)').matches);
+  var settings = { shadows: !(qs.lite || MOBILE) };
+  try { var lsShadow = window.localStorage.getItem('tw.shadows'); if (lsShadow === '1') settings.shadows = true; else if (lsShadow === '0') settings.shadows = false; } catch (e) {}
+  if (qs.lite) settings.shadows = false;
+  renderer.setPixelRatio(qs.lite ? 1 : Math.min(window.devicePixelRatio || 1, MOBILE ? 1.25 : 1.75));
+  renderer.shadowMap.enabled = settings.shadows;
   renderer.shadowMap.type = T.PCFSoftShadowMap;
   var scene = new T.Scene();
   var camera = new T.PerspectiveCamera(50, 1, 0.1, 1500);
   var world = World.build(scene);
+  world.sun.castShadow = settings.shadows;
+  if (MOBILE) { scene.fog.near = 50; scene.fog.far = 230; }
+  var FAR_CULL = MOBILE ? 115 : 150;
+  function applyShadows(on) {
+    settings.shadows = !!on;
+    renderer.shadowMap.enabled = settings.shadows;
+    world.sun.castShadow = settings.shadows;
+    scene.traverse(function (o) { if (o.material && !Array.isArray(o.material)) o.material.needsUpdate = true; });
+    try { window.localStorage.setItem('tw.shadows', settings.shadows ? '1' : '0'); } catch (e) {}
+    UI.setShadows(settings.shadows);
+  }
   var CAMP = TW.ZONE_BY_ID.camp;
   var SPAWN = { x: World.PREVIEW.x, z: World.PREVIEW.z };
 
@@ -656,6 +672,7 @@
     cam.yaw = 0;
     UI.overlay('death', false);
     UI.clearFloaters();
+    saveGame();
   }
 
   /* =============== monsters =============== */
@@ -825,6 +842,7 @@
         G.victoryShown = true;
         G.quest.idx = TW.QUESTS.length; G.quest.progress = 0;
         UI.quest(null);
+        saveGame();
         after(2.6, function () {
           var t = Math.round(G.time - G.stats.start), mm = Math.floor(t / 60), ss = t % 60;
           UI.overlay('victory', true, { time: mm + ':' + (ss < 10 ? '0' : '') + ss, kills: G.stats.kills, level: player.level, gold: player.gold });
@@ -848,7 +866,7 @@
     }
     var p = player, canSee = p && !p.dead && !p.buffs.vanish && G.mode === 'game';
     var dp = canSee ? dist2(m.pos, p.pos) : 1e9;
-    var far = p ? dist2(m.pos, p.pos) > 150 : dist2(m.pos, cam.target) > 170;
+    var far = p ? dist2(m.pos, p.pos) > FAR_CULL : dist2(m.pos, cam.target) > 170;
     md.root.visible = !far;
     if (far && m.state !== 'idle') m.state = m.state === 'wander' ? 'wander' : 'return';
 
@@ -1061,6 +1079,7 @@
     var next = TW.QUESTS[G.quest.idx];
     UI.quest(next || null, G.quest.idx, 0);
     if (next) after(3.4, function () { if (G.mode === 'game') UI.toast('ประกาศใหม่จากกิลด์', next.title, next.brief, 'quiet'); });
+    saveGame();
   }
   var navT = 0, zoneT = 0;
   function updateQuestNav(dt) {
@@ -1097,8 +1116,8 @@
       return;
     }
     if (G.mode === 'class') {
-      var P = World.PREVIEW, y = World.heightAt(P.x, P.z);
-      camera.position.set(P.x, y + 2.0, P.z + 6.6);
+      var P = World.PREVIEW, y = World.heightAt(P.x, P.z), D = G.previewDist || 6.6;
+      camera.position.set(P.x, y + 1.2 + D * 0.14, P.z + D);
       camera.lookAt(P.x, y + 1.2, P.z);
       return;
     }
@@ -1122,6 +1141,8 @@
     var w = window.innerWidth, h = window.innerHeight;
     if (G.mode !== 'class') { camera.clearViewOffset(); return; }
     var c = UI.stageCenter();
+    /* pull the camera back until the hunter (≈2.6 m tall) fits inside the stage column */
+    G.previewDist = clamp(3.3 * h / Math.max(100, c.h || h), 5.5, 13);
     camera.setViewOffset(w, h, Math.round(w / 2 - c.x), Math.round(h / 2 - c.y), w, h);
   }
   function focusPoint() {
@@ -1132,6 +1153,7 @@
 
   /* =============== modes =============== */
   function showTitle() {
+    saveGame();
     G.mode = 'title';
     G.paused = false;
     camera.clearViewOffset();
@@ -1145,6 +1167,7 @@
     ['pause', 'death', 'victory', 'howto'].forEach(function (id) { UI.overlay(id, false); });
     resetMonsters();
     World.pedestalRing.visible = false;
+    UI.showSave(loadSave());
     UI.screen('title');
   }
   function showClass() {
@@ -1190,6 +1213,7 @@
       G.victoryShown = G.quest.idx >= TW.QUESTS.length;
       if (restore.x != null) { player.pos.set(restore.x, 0, restore.z); player.pos.y = World.heightAt(restore.x, restore.z); }
     }
+    G.token = (restore && restore.token) || newToken();
     resetMonsters();
     cam.yaw = 0; cam.shake = 0;
     cam.target.set(player.pos.x, player.pos.y + 1.4, player.pos.z);
@@ -1197,9 +1221,11 @@
     UI.quest(TW.QUESTS[G.quest.idx] || null, G.quest.idx, G.quest.progress);
     UI.zone(World.zoneAt(player.pos.x, player.pos.z));
     UI.screen('game');
-    navT = 0; zoneT = 0;
+    navT = 0; zoneT = 0; saveT = 0;
     var q = TW.QUESTS[G.quest.idx];
-    UI.toast('ยินดีต้อนรับ ' + name, restore ? 'กลับมาล่าต่อ' : 'ใบอนุญาตออกแล้ว', q ? 'ประกาศแรก: ' + q.title + ' — ' + q.brief : '');
+    UI.toast('ยินดีต้อนรับ ' + name, restore ? 'กลับมาล่าต่อ' : 'ใบอนุญาตออกแล้ว', q ? (restore ? 'ประกาศปัจจุบัน: ' : 'ประกาศแรก: ') + q.title + ' — ' + q.brief : '');
+    if (input.touch && window.innerHeight > window.innerWidth) after(2.8, function () { if (G.mode === 'game') UI.toast('', 'หมุนจอเป็นแนวนอน', 'จะเห็นสนามกว้างขึ้นและกดสกิลถนัดกว่า', 'quiet'); });
+    saveGame();
   }
   function togglePause(on) {
     if (G.mode !== 'game') return;
@@ -1209,6 +1235,7 @@
     UI.overlay('pause', on);
     input.keys = {};
     input.mouseDown = false;
+    if (on) saveGame();
   }
 
   /* =============== input =============== */
@@ -1230,30 +1257,80 @@
   });
   window.addEventListener('keyup', function (e) { input.keys[e.code] = false; });
   window.addEventListener('blur', function () { input.keys = {}; input.mouseDown = false; input.rDown = false; });
-  document.addEventListener('visibilitychange', function () { if (document.hidden && G.mode === 'game' && !G.paused) togglePause(true); });
+  document.addEventListener('visibilitychange', function () { if (document.hidden) { saveGame(); if (G.mode === 'game' && !G.paused) togglePause(true); } });
+  window.addEventListener('pagehide', saveGame);
+  window.addEventListener('beforeunload', saveGame);
 
   canvas.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+  /* One touch finger on the empty scene drags the camera (or the hunter on the pedestal);
+     the joystick and skill buttons capture their own pointers, so a second finger never interferes. */
   canvas.addEventListener('pointerdown', function (e) {
+    if (e.pointerType === 'touch') {
+      if (input.dragId != null) return;
+      input.dragId = e.pointerId; input.drag = true;
+      input.lastX = e.clientX; input.lastY = e.clientY;
+      canvas.setPointerCapture(e.pointerId);
+      return;
+    }
     canvas.setPointerCapture(e.pointerId);
-    input.lastX = e.clientX; input.lastY = e.clientY; input.moved = 0;
-    if (e.pointerType === 'touch') { input.drag = true; return; }
+    input.lastX = e.clientX; input.lastY = e.clientY;
     if (e.button === 0) { if (G.mode === 'class') input.drag = true; else input.mouseDown = true; }
     if (e.button === 2 || e.button === 1) input.rDown = true;
   });
   canvas.addEventListener('pointermove', function (e) {
-    input.ndc.set((e.clientX / window.innerWidth) * 2 - 1, -(e.clientY / window.innerHeight) * 2 + 1);
+    if (e.pointerType === 'touch') { if (e.pointerId !== input.dragId) return; }
+    else input.ndc.set((e.clientX / window.innerWidth) * 2 - 1, -(e.clientY / window.innerHeight) * 2 + 1);
     var dx = e.clientX - input.lastX;
     input.lastX = e.clientX; input.lastY = e.clientY;
     if (G.mode === 'class' && input.drag) G.previewYaw += dx * 0.012;
     else if (G.mode === 'game' && (input.rDown || (input.drag && e.pointerType === 'touch'))) cam.yaw -= dx * 0.006;
   });
-  function pointerEnd(e) { input.mouseDown = false; input.rDown = false; input.drag = false; }
+  function pointerEnd(e) {
+    if (e.pointerType === 'touch') { if (e.pointerId === input.dragId) { input.dragId = null; input.drag = false; } return; }
+    input.mouseDown = false; input.rDown = false; input.drag = false;
+  }
   canvas.addEventListener('pointerup', pointerEnd);
   canvas.addEventListener('pointercancel', pointerEnd);
   canvas.addEventListener('wheel', function (e) { if (G.mode === 'game') cam.dist = clamp(cam.dist + e.deltaY * 0.015, 12, 34); e.preventDefault(); }, { passive: false });
 
+  /* =============== save / continue (this browser only) =============== */
+  var SAVE_KEY = 'tw.save.v1', saveT = 0;
+  function newToken() {
+    try { if (window.crypto && window.crypto.randomUUID) return window.crypto.randomUUID(); } catch (e) {}
+    return 'tw-' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+  }
+  function saveGame() {
+    if (G.mode !== 'game' || !player) return;
+    var s = snapshot();
+    s.v = 1; s.token = G.token; s.savedAt = Date.now();
+    if (player.dead) { s.x = SPAWN.x; s.z = SPAWN.z; }
+    try { window.localStorage.setItem(SAVE_KEY, JSON.stringify(s)); } catch (e) {}
+  }
+  function loadSave() {
+    try {
+      var raw = window.localStorage.getItem(SAVE_KEY);
+      if (!raw) return null;
+      var s = JSON.parse(raw);
+      if (!s || !s.cls || !TW.CLASSES.some(function (c) { return c.id === s.cls; })) return null;
+      return s;
+    } catch (e) { return null; }
+  }
+  function deleteSave() { try { window.localStorage.removeItem(SAVE_KEY); } catch (e) {} }
+
   UI.on('start', showClass);
   UI.on('back', showTitle);
+  UI.on('continue-save', function () { var s = loadSave(); if (s) startGame(s.cls, s.name || TW.HUNTER_NAMES[0], s); });
+  UI.on('delete-save', function () { deleteSave(); UI.showSave(null); });
+  UI.on('shadows', applyShadows);
+  UI.on('fullscreen', function () {
+    var el = document.documentElement, req = el.requestFullscreen || el.webkitRequestFullscreen;
+    try {
+      var pr = req && req.call(el);
+      if (pr && pr.then) pr.then(function () {
+        try { if (window.screen && screen.orientation && screen.orientation.lock) screen.orientation.lock('landscape').catch(function () {}); } catch (e2) {}
+      }).catch(function () {});
+    } catch (e) {}
+  });
   UI.on('select', function (id) { if (G.mode === 'class') setPreview(id); });
   UI.on('confirm', function (cls, name) { startGame(cls, name); });
   UI.on('pause', function () { togglePause(true); });
@@ -1293,6 +1370,8 @@
         updatePlayer(dt);
         updateZonesFx(dt);
         if (!player.dead) { updateQuestNav(dt); updateZone(dt); }
+        saveT += dt;
+        if (saveT >= 10) { saveT = 0; saveGame(); }
       }
       for (var i = 0; i < monsters.length; i++) updateMonster(monsters[i], dt);
       separateMonsters();
@@ -1325,7 +1404,7 @@
   }
   var autoT = 0;
   function debugAuto(dt) {
-    if (!qs.auto || G.mode !== 'game' || player.dead) return;
+    if (!(qs.auto || G.debugAuto) || G.mode !== 'game' || player.dead || G.paused) return;
     autoT -= dt;
     if (autoT > 0) return;
     autoT = 0.7;
@@ -1335,6 +1414,8 @@
   }
   function start(data) {
     UI.init();
+    if (qs.touch) UI.setTouch(true);
+    UI.setShadows(settings.shadows);
     UI.initMinimap(World.minimapImage(176, 200), 200);
     populate();
     resize();
@@ -1348,5 +1429,12 @@
   if (hot && hot.snapshot) hot.snapshot(snapshot);
   if (hot && hot.ready) hot.ready(start); else start(hot && hot.data ? hot.data : {});
 
-  TW.Game = { useSkill: useSkill, usePotion: usePotion, showTitle: showTitle, state: G };
+  TW.Game = {
+    useSkill: useSkill, usePotion: usePotion, showTitle: showTitle, state: G,
+    /* test hooks used by tools/smoke.mjs */
+    player: function () { return player; },
+    monsters: function () { return monsters; },
+    forceDeath: function () { if (player && !player.dead) { player.hp = 0; playerDie(); } },
+    forceBossKill: function () { for (var i = 0; i < monsters.length; i++) if (monsters[i].def.boss && monsters[i].alive) { monsters[i].hp = 0; killMonster(monsters[i]); } },
+  };
 })();

@@ -93,6 +93,22 @@
     $('btn-respawn').addEventListener('click', function () { emit('respawn'); });
     $('btn-continue').addEventListener('click', function () { emit('continue'); });
     $('btn-home').addEventListener('click', function () { emit('quit'); });
+    $('opt-shadows').addEventListener('change', function () { emit('shadows', $('opt-shadows').checked); });
+    $('btn-fullscreen').addEventListener('click', function () { emit('fullscreen'); });
+    $('btn-continue-save').addEventListener('click', function () { emit('continue-save'); });
+    var armed = false;
+    $('btn-new-save').addEventListener('click', function () {
+      var b = $('btn-new-save');
+      if (!armed) {
+        armed = true;
+        b.textContent = 'แตะอีกครั้งเพื่อยืนยันลบ';
+        b.classList.add('danger');
+        setTimeout(function () { armed = false; b.textContent = 'ลบแล้วเริ่มใหม่'; b.classList.remove('danger'); }, 4000);
+        return;
+      }
+      armed = false;
+      emit('delete-save');
+    });
     document.querySelectorAll('[data-close]').forEach(function (b) {
       b.addEventListener('click', function () { b.closest('.overlay').hidden = true; emit('overlayClosed'); });
     });
@@ -114,7 +130,10 @@
     pad.addEventListener('pointercancel', padEnd);
 
     if (window.matchMedia && window.matchMedia('(pointer: coarse)').matches && !window.matchMedia('(pointer: fine)').matches) UI.setTouch(true);
-    window.addEventListener('pointerdown', function (e) { if (e.pointerType === 'touch' && !state.touch) UI.setTouch(true); }, { passive: true });
+    window.addEventListener('pointerdown', function (e) {
+      if (e.pointerType === 'touch' && !state.touch) UI.setTouch(true);
+      else if (e.pointerType === 'mouse' && state.touch) UI.setTouch(false);
+    }, { passive: true });
 
     UI.selectClass(state.cls);
   };
@@ -130,7 +149,7 @@
     $('screen-title').hidden = name !== 'title';
     $('screen-class').hidden = name !== 'class';
     $('hud').hidden = name !== 'game';
-    if (name === 'class') setTimeout(function () { $('hunter-name').focus({ preventScroll: true }); }, 50);
+    if (name === 'class' && !state.touch) setTimeout(function () { $('hunter-name').focus({ preventScroll: true }); }, 50);
   };
 
   /* ---------- class select ---------- */
@@ -159,7 +178,7 @@
   };
   UI.stageCenter = function () {
     var r = $('class-stage').getBoundingClientRect();
-    return { x: r.left + r.width / 2, y: r.top + r.height * 0.5 };
+    return { x: r.left + r.width / 2, y: r.top + r.height * 0.5, h: r.height };
   };
 
   /* ---------- HUD ---------- */
@@ -380,6 +399,31 @@
   UI.anyOverlay = function () {
     return !!document.querySelector('.overlay:not([hidden])');
   };
+
+  /* ---------- saved hunter card & settings ---------- */
+  function timeAgo(ms) {
+    var m = Math.round(ms / 60000);
+    if (m < 1) return 'เมื่อสักครู่';
+    if (m < 60) return m + ' นาทีที่แล้ว';
+    var h = Math.round(m / 60);
+    if (h < 24) return h + ' ชั่วโมงที่แล้ว';
+    return Math.round(h / 24) + ' วันที่แล้ว';
+  }
+  UI.showSave = function (save) {
+    $('continue-card').hidden = !save;
+    $('btn-start').textContent = save ? 'นักล่าคนใหม่' : 'รับใบอนุญาตนักล่า';
+    $('btn-start').className = 'btn ' + (save ? 'btn-ghost' : 'btn-primary');
+    if (!save) return;
+    var cls = TW.CLASSES.filter(function (c) { return c.id === save.cls; })[0];
+    var qi = save.quest ? save.quest.idx : 0, q = TW.QUESTS[qi];
+    $('cc-name').textContent = save.name;
+    $('cc-meta').textContent = (cls ? cls.th + ' · ' : '') + 'Lv ' + save.level + ' · ' + (save.gold || 0) + ' เหรียญ';
+    $('cc-quest').textContent = (q ? 'ประกาศล่า ' + (qi + 1) + '/' + TW.QUESTS.length + ' · ' + q.title + ' ' + (save.quest.progress || 0) + '/' + q.count : 'ล่าครบทุกประกาศแล้ว') +
+      (save.savedAt ? ' · บันทึก' + timeAgo(Date.now() - save.savedAt) : '');
+    $('btn-new-save').textContent = 'ลบแล้วเริ่มใหม่';
+    $('btn-new-save').classList.remove('danger');
+  };
+  UI.setShadows = function (on) { $('opt-shadows').checked = !!on; };
 
   TW.UI = UI;
 })();

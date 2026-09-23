@@ -2,7 +2,11 @@
 <html lang="th">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#0e1613">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <!-- BUILD:HEAD START -->
 <title>Thornwild</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -24,6 +28,15 @@
       <h1 class="wordmark">Thornwild</h1>
       <p class="wordmark-th">ตำนานนักล่าแห่งป่าหนาม</p>
       <p class="tagline">ป่าหนามตื่นขึ้นอีกครั้ง อสูรลงมาถึงชายทุ่งแล้ว กิลด์กำลังออกใบอนุญาตให้นักล่าหน้าใหม่ เลือกสายอาชีพ แล้วเดินเข้าป่าไปพร้อมอาวุธของคุณ</p>
+      <div class="continue-card" id="continue-card" hidden>
+        <p class="eyebrow">ใบอนุญาตที่บันทึกไว้ในเบราว์เซอร์นี้</p>
+        <p class="cc-name"><b id="cc-name">—</b><span id="cc-meta">—</span></p>
+        <p class="cc-quest" id="cc-quest">—</p>
+        <div class="cc-actions">
+          <button id="btn-continue-save" class="btn btn-primary" type="button">เล่นต่อ</button>
+          <button id="btn-new-save" class="btn btn-ghost" type="button">ลบแล้วเริ่มใหม่</button>
+        </div>
+      </div>
       <div class="title-actions">
         <button id="btn-start" class="btn btn-primary" type="button">รับใบอนุญาตนักล่า</button>
         <button id="btn-howto" class="btn btn-ghost" type="button">วิธีเล่น</button>
@@ -78,7 +91,7 @@
       <div class="boss-bar"><i id="boss-fill"></i><span class="boss-mark"></span></div>
     </div>
 
-    <div class="hud-player">
+    <div class="hud-player" id="hud-player">
       <div class="pf-row">
         <span class="pf-lv">Lv <b id="pf-lv">1</b></span>
         <span class="pf-name" id="pf-name">—</span>
@@ -120,6 +133,7 @@
         <li>บนมือถือ: ลากจอยซ้ายล่างเพื่อเดิน แตะปุ่มทักษะขวาล่าง ระบบจะเล็งอสูรที่ใกล้ที่สุดให้</li>
         <li>อสูรตัวใหญ่จะมีวงแดงบนพื้นเตือนก่อนโจมตี ออกจากวงให้ทัน</li>
         <li>ในค่ายกิลด์ พลังชีวิตฟื้นเร็ว และอสูรจะไม่ตามเข้ามา</li>
+        <li>เกมบันทึกความคืบหน้าให้เองในเบราว์เซอร์นี้ ปิดไปแล้วกดเล่นต่อได้จากหน้าหลัก (เปลี่ยนเครื่องหรือเบราว์เซอร์ต้องสร้างนักล่าใหม่)</li>
       </ul>
       <div class="sheet-actions"><button class="btn btn-primary" type="button" data-close>เข้าใจแล้ว</button></div>
     </div>
@@ -136,9 +150,14 @@
         <dt><kbd>F</kbd></dt><dd>ยาฟื้นพลัง</dd>
         <dt>คลิกขวาลาก · <kbd>Q</kbd><kbd>E</kbd></dt><dd>หมุนกล้อง</dd>
       </dl>
+      <div class="settings">
+        <label class="switch" for="opt-shadows"><input type="checkbox" id="opt-shadows"><span>เงาและแสงละเอียด <small>ปิดถ้าเครื่องกระตุก</small></span></label>
+        <button id="btn-fullscreen" class="btn btn-ghost" type="button">เต็มจอ</button>
+      </div>
+      <p class="save-note">ความคืบหน้าบันทึกอัตโนมัติในเบราว์เซอร์นี้ ปิดแล้วกลับมาเล่นต่อได้จากหน้าหลัก</p>
       <div class="sheet-actions">
         <button id="btn-resume" class="btn btn-primary" type="button">ล่าต่อ</button>
-        <button id="btn-quit" class="btn btn-ghost" type="button">เปลี่ยนอาชีพ (กลับหน้าหลัก)</button>
+        <button id="btn-quit" class="btn btn-ghost" type="button">บันทึกแล้วกลับหน้าหลัก</button>
       </div>
     </div>
   </div>

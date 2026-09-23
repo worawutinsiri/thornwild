@@ -52,7 +52,9 @@ body {
   -webkit-user-select: none;
   user-select: none;
   -webkit-tap-highlight-color: transparent;
+  overscroll-behavior: none;
 }
+.btn, .btn-link, .slot, .license, .hud-menu, .switch { touch-action: manipulation; }
 
 #scene {
   position: fixed;
@@ -195,6 +197,24 @@ kbd {
   text-wrap: pretty;
 }
 .title-actions { display: flex; flex-wrap: wrap; gap: 12px; }
+
+/* saved hunter (localStorage) — shown above the actions when this browser has a save */
+.continue-card {
+  display: grid;
+  gap: 4px;
+  margin: 4px 0 6px;
+  padding: 14px 16px;
+  background: rgba(21, 32, 27, .84);
+  box-shadow: inset 0 0 0 1px var(--verdigris);
+  clip-path: var(--notch);
+}
+.cc-name { margin: 2px 0 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; }
+.cc-name b { font-family: var(--f-head); font-weight: 700; font-size: var(--s2); line-height: 1.2; }
+.cc-name span { font-size: var(--s-1); color: var(--bone-dim); }
+.cc-quest { margin: 0; font-size: var(--s-1); color: var(--bone-dim); }
+.cc-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.cc-actions .btn { min-height: 42px; padding: 0 18px; }
+.btn-ghost.danger { color: var(--ember); box-shadow: inset 0 0 0 1px var(--ember); }
 
 .bounty-board {
   pointer-events: auto;
@@ -764,6 +784,22 @@ kbd {
 .controls dt { display: flex; gap: 4px; align-items: center; color: var(--bone); font-weight: 600; }
 .controls dd { margin: 0; color: var(--bone-dim); }
 .tips { margin: 0 0 16px; padding-left: 1.1em; display: grid; gap: 6px; font-size: var(--s-1); color: var(--bone-dim); }
+.settings {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 16px;
+  margin: 0 0 12px;
+  padding: 12px 14px;
+  background: rgba(235, 226, 201, .05);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+.switch { display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: var(--s-1); }
+.switch input { width: 18px; height: 18px; margin: 0; accent-color: var(--verdigris); }
+.switch small { display: block; color: var(--bone-faint); font-size: var(--s-2); }
+.settings .btn { min-height: 40px; padding: 0 16px; font-size: var(--s-1); }
+.sheet .save-note { font-size: var(--s-2); color: var(--bone-faint); }
 .tally { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin: 0 0 18px; }
 .tally div { display: flex; flex-direction: column-reverse; gap: 2px; }
 .tally dt { font-size: var(--s-2); color: var(--bone-faint); }
@@ -787,30 +823,74 @@ kbd {
   .toast { animation: none; }
 }
 
-/* ---------- touch layout ---------- */
+/* ---------- touch layout ----------
+   Phones play in landscape: left column = menu + hunter frame, centre = quest strip,
+   right = minimap. Thumbs get the joystick (bottom-left) and the skill cluster (bottom-right).
+   Portrait moves the quest under the hunter frame and the boss bar under the map. */
 .touch-on .touch-pad { display: block; }
-.touch-on .hud-player { bottom: auto; top: calc(var(--gutter) + 4px); left: 50%; transform: translateX(-50%); width: min(300px, 52vw); padding: 10px 12px; }
-.touch-on .hud-quest { display: none; }
+.touch-on .hud-menu { top: var(--gutter); left: var(--gutter); right: auto; bottom: auto; min-height: 34px; padding: 0 12px; font-size: var(--s-2); }
+.touch-on .hud-menu kbd { display: none; }
+.touch-on .hud-player { top: calc(var(--gutter) + 42px); left: var(--gutter); bottom: auto; width: min(210px, 46vw); padding: 8px 10px; gap: 4px; }
+.touch-on .pf-name { font-size: var(--s0); }
+.touch-on .bar-hp { height: 12px; }
+.touch-on .bar-mp { height: 8px; }
+.touch-on .bar span { font-size: .5625rem; }
+.touch-on .pf-gold { font-size: .6875rem; }
+.touch-on .hud-map { transform: scale(.6); transform-origin: top right; }
+.touch-on .hud-quest { top: var(--gutter); left: 50%; transform: translateX(-50%); width: min(300px, 38vw); padding: 6px 10px 8px; }
+.touch-on .hud-quest h3 { font-size: var(--s-1); margin: 0; }
+.touch-on .q-brief { display: none; }
+.touch-on .q-progress, .touch-on .q-nav { font-size: var(--s-2); }
+.touch-on .q-track { margin: 3px 0 5px; }
+.touch-on .hud-boss { top: calc(var(--gutter) + 86px); width: min(320px, 40vw); }
+.touch-on .boss-name .latin { font-size: 1.25rem; }
 .touch-on .skillbar {
   left: auto;
   right: var(--gutter);
+  bottom: var(--gutter);
   transform: none;
   display: grid;
-  grid-template-columns: repeat(3, 60px);
+  grid-template-columns: repeat(3, 54px);
+  grid-template-rows: 54px 68px;
   grid-template-areas:
-    ". s1 s2"
-    "s3 . ."
-    "po . basic";
-  gap: 10px;
+    "s1 s2 s3"
+    "po basic basic";
+  gap: 8px;
 }
-.touch-on .slot[data-slot="0"] { grid-area: basic; grid-column: 2 / 4; grid-row: 2 / 4; width: 100%; height: 100%; }
+.touch-on .slot { width: 54px; height: 54px; }
+.touch-on .slot .key { display: none; }
+.touch-on .slot[data-slot="0"] { grid-area: basic; width: 100%; height: 68px; }
 .touch-on .slot[data-slot="1"] { grid-area: s1; }
 .touch-on .slot[data-slot="2"] { grid-area: s2; }
 .touch-on .slot[data-slot="3"] { grid-area: s3; }
-.touch-on .slot.potion { grid-area: po; margin-left: 0; }
-.touch-on .slot { width: 60px; height: 60px; }
-.touch-on .hud-menu { top: var(--gutter); bottom: auto; right: auto; left: var(--gutter); }
-.touch-on .hud-map { transform: scale(.72); transform-origin: top right; }
+.touch-on .slot.potion { grid-area: po; margin: 0; height: 68px; }
+.touch-on .toasts { top: 30%; }
+@media (orientation: portrait) {
+  .touch-on .hud-quest { left: var(--gutter); transform: none; top: calc(var(--gutter) + 150px); width: min(210px, 46vw); }
+  .touch-on .hud-boss { top: calc(var(--gutter) + 150px); left: auto; right: var(--gutter); transform: none; width: min(200px, 44vw); }
+}
+
+/* landscape phones: keep the three-column class screen but compact, so the hunter stays visible */
+@media (max-width: 900px) and (min-width: 640px) and (max-height: 520px) {
+  .screen-class {
+    grid-template-columns: minmax(200px, 240px) minmax(0, 1fr) minmax(260px, 300px);
+    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-areas: "head stage detail" "list stage detail";
+    column-gap: 16px;
+    row-gap: 8px;
+    background: linear-gradient(90deg, rgba(10, 16, 13, .8) 0%, rgba(10, 16, 13, 0) 32%, rgba(10, 16, 13, 0) 60%, rgba(10, 16, 13, .82) 78%);
+  }
+  .class-list { flex-direction: column; overflow: visible; }
+  .license { width: 100%; }
+  .class-detail { max-height: none; }
+  .class-head h2 { font-size: var(--s1); }
+}
+@media (max-height: 520px) {
+  .tagline { display: none; }
+  .wordmark { font-size: clamp(3rem, 9vw, 5rem); }
+  .cc-quest { display: none; }
+  .continue-card { padding: 10px 14px; }
+}
 
 /* ---------- narrow screens ---------- */
 @media (max-width: 900px) {
