@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!-- BUILD:HEAD START -->
+<title>Thornwild</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bai+Jamjuree:wght@400;500;600;700&family=Grenze+Gotisch:wght@500;700&family=Taviraj:ital,wght@0,500;0,600;0,700;1,500&display=swap">
+<link rel="stylesheet" href="css/style.css">
+<!-- BUILD:HEAD END -->
+</head>
+<body>
+<!-- BUILD:BODY START -->
+<canvas id="scene" aria-label="โลกสามมิติของ Thornwild"></canvas>
+
+<div id="ui">
+
+  <!-- ============ TITLE ============ -->
+  <section id="screen-title" class="screen screen-title">
+    <div class="title-stack">
+      <p class="eyebrow">กิลด์นักล่าแห่งหุบเขา · ฤดูใบไม้ร่วง ปีที่ 312</p>
+      <h1 class="wordmark">Thornwild</h1>
+      <p class="wordmark-th">ตำนานนักล่าแห่งป่าหนาม</p>
+      <p class="tagline">ป่าหนามตื่นขึ้นอีกครั้ง อสูรลงมาถึงชายทุ่งแล้ว กิลด์กำลังออกใบอนุญาตให้นักล่าหน้าใหม่ เลือกสายอาชีพ แล้วเดินเข้าป่าไปพร้อมอาวุธของคุณ</p>
+      <div class="title-actions">
+        <button id="btn-start" class="btn btn-primary" type="button">รับใบอนุญาตนักล่า</button>
+        <button id="btn-howto" class="btn btn-ghost" type="button">วิธีเล่น</button>
+      </div>
+    </div>
+    <aside class="bounty-board" aria-labelledby="bounty-head">
+      <h2 id="bounty-head" class="panel-head">ประกาศล่าประจำฤดู</h2>
+      <ol id="bounty-list" class="bounty-list"></ol>
+      <p class="bounty-foot">ค่าหัวจ่ายที่ค่ายกิลด์ชายป่า · ระดับภัย E ต่ำสุด → A สูงสุด</p>
+    </aside>
+  </section>
+
+  <!-- ============ CLASS SELECT ============ -->
+  <section id="screen-class" class="screen screen-class" hidden>
+    <header class="class-head">
+      <button id="btn-back" class="btn-link" type="button">← กลับ</button>
+      <h2>เลือกสายอาชีพ</h2>
+      <p>ใบอนุญาตแต่ละใบมาพร้อมคำสาบานของมันเอง ลากที่ตัวละครเพื่อหมุนดู</p>
+    </header>
+    <div id="class-list" class="class-list" role="radiogroup" aria-label="สายอาชีพ"></div>
+    <div id="class-stage" class="class-stage" aria-hidden="true"><span class="drag-hint">ลากเพื่อหมุน</span></div>
+    <article class="class-detail" aria-live="polite">
+      <div id="class-info"></div>
+      <form id="oath-form" class="oath-form" autocomplete="off">
+        <label for="hunter-name">ชื่อนักล่า</label>
+        <div class="oath-row">
+          <input id="hunter-name" name="hunter-name" type="text" maxlength="16" required spellcheck="false">
+          <button id="btn-confirm" class="btn btn-primary" type="submit">สาบานตนและออกล่า</button>
+        </div>
+      </form>
+    </article>
+  </section>
+
+  <!-- ============ HUD ============ -->
+  <section id="hud" class="hud" hidden>
+    <div class="hud-quest" id="hud-quest">
+      <p class="eyebrow" id="q-eyebrow">ประกาศล่า</p>
+      <h3 id="q-title">—</h3>
+      <p class="q-brief" id="q-brief"></p>
+      <div class="q-progress"><span id="q-target">—</span><b id="q-count">0 / 0</b></div>
+      <div class="q-track"><i id="q-fill"></i></div>
+      <p class="q-nav"><svg id="q-arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 L19 20 L12 16 L5 20 Z"/></svg><span id="q-dist">—</span></p>
+    </div>
+
+    <div class="hud-map">
+      <div class="map-frame"><canvas id="minimap" width="176" height="176" aria-label="แผนที่"></canvas></div>
+      <p class="map-zone"><span id="zone-name">—</span><em id="zone-lv"></em></p>
+    </div>
+
+    <div class="hud-boss" id="hud-boss" hidden>
+      <p class="boss-name"><span class="latin">Old Thornheart</span><span>ธอร์นฮาร์ตผู้เฒ่า · ภัยระดับ A</span></p>
+      <div class="boss-bar"><i id="boss-fill"></i><span class="boss-mark"></span></div>
+    </div>
+
+    <div class="hud-player">
+      <div class="pf-row">
+        <span class="pf-lv">Lv <b id="pf-lv">1</b></span>
+        <span class="pf-name" id="pf-name">—</span>
+        <span class="pf-class" id="pf-class">—</span>
+      </div>
+      <div class="bar bar-hp"><i id="hp-fill"></i><span id="hp-text">0 / 0</span></div>
+      <div class="bar bar-mp"><i id="mp-fill"></i><span id="mp-text">0 / 0</span></div>
+      <div class="bar bar-xp" title="ค่าประสบการณ์"><i id="xp-fill"></i></div>
+      <p class="pf-gold"><span>เหรียญกิลด์</span><b id="gold">0</b></p>
+    </div>
+
+    <div class="skillbar" id="skillbar"></div>
+
+    <button id="btn-pause" class="hud-menu" type="button">เมนู <kbd>Esc</kbd></button>
+
+    <div class="touch-pad" id="touch-pad" aria-hidden="true"><div class="touch-knob" id="touch-knob"></div></div>
+    <div class="hurt" id="hurt"></div>
+  </section>
+
+  <div id="floaters" class="floaters" aria-hidden="true"></div>
+  <div id="toasts" class="toasts" aria-live="polite"></div>
+
+  <!-- ============ OVERLAYS ============ -->
+  <div id="ov-howto" class="overlay" hidden>
+    <div class="sheet">
+      <p class="eyebrow">คู่มือนักล่าฉบับกระเป๋า</p>
+      <h2>วิธีเล่น</h2>
+      <dl class="controls">
+        <dt><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></dt><dd>เดิน (หรือปุ่มลูกศร)</dd>
+        <dt>เมาส์</dt><dd>เล็งทิศทางโจมตีและทักษะ</dd>
+        <dt>คลิกซ้าย</dt><dd>โจมตีปกติ กดค้างเพื่อโจมตีต่อเนื่อง</dd>
+        <dt><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd></dt><dd>ทักษะประจำอาชีพ</dd>
+        <dt><kbd>F</kbd></dt><dd>ดื่มยาฟื้นพลัง (ฟื้น 40% ของพลังชีวิต)</dd>
+        <dt>คลิกขวาลาก · <kbd>Q</kbd><kbd>E</kbd></dt><dd>หมุนกล้อง</dd>
+        <dt>ล้อเมาส์</dt><dd>ซูมเข้า–ออก</dd>
+        <dt><kbd>Esc</kbd></dt><dd>พักเกม</dd>
+      </dl>
+      <ul class="tips">
+        <li>บนมือถือ: ลากจอยซ้ายล่างเพื่อเดิน แตะปุ่มทักษะขวาล่าง ระบบจะเล็งอสูรที่ใกล้ที่สุดให้</li>
+        <li>อสูรตัวใหญ่จะมีวงแดงบนพื้นเตือนก่อนโจมตี ออกจากวงให้ทัน</li>
+        <li>ในค่ายกิลด์ พลังชีวิตฟื้นเร็ว และอสูรจะไม่ตามเข้ามา</li>
+      </ul>
+      <div class="sheet-actions"><button class="btn btn-primary" type="button" data-close>เข้าใจแล้ว</button></div>
+    </div>
+  </div>
+
+  <div id="ov-pause" class="overlay" hidden>
+    <div class="sheet">
+      <p class="eyebrow">พักการล่า</p>
+      <h2>ป่ายังรออยู่</h2>
+      <dl class="controls">
+        <dt><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></dt><dd>เดิน</dd>
+        <dt>คลิกซ้าย</dt><dd>โจมตีปกติ</dd>
+        <dt><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd></dt><dd>ทักษะ</dd>
+        <dt><kbd>F</kbd></dt><dd>ยาฟื้นพลัง</dd>
+        <dt>คลิกขวาลาก · <kbd>Q</kbd><kbd>E</kbd></dt><dd>หมุนกล้อง</dd>
+      </dl>
+      <div class="sheet-actions">
+        <button id="btn-resume" class="btn btn-primary" type="button">ล่าต่อ</button>
+        <button id="btn-quit" class="btn btn-ghost" type="button">เปลี่ยนอาชีพ (กลับหน้าหลัก)</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="ov-death" class="overlay overlay-death" hidden>
+    <div class="sheet">
+      <p class="eyebrow">บันทึกกิลด์</p>
+      <h2>คุณล้มลงกลางป่า</h2>
+      <p>หน่วยกู้ภัยของกิลด์ลากคุณกลับค่ายได้ทัน แต่เหรียญบางส่วนหล่นหายระหว่างทาง (<b id="death-loss">0</b> เหรียญ)</p>
+      <div class="sheet-actions"><button id="btn-respawn" class="btn btn-primary" type="button">ฟื้นที่ค่าย</button></div>
+    </div>
+  </div>
+
+  <div id="ov-victory" class="overlay overlay-victory" hidden>
+    <div class="sheet">
+      <p class="eyebrow">ประกาศล่าระดับ A · ปิดคดี</p>
+      <h2>ธอร์นฮาร์ตล้มลงแล้ว</h2>
+      <p>หัวใจแห่งหนามดับแสง ป่าเงียบลงเป็นครั้งแรกในรอบสามฤดู ชื่อของคุณถูกสลักไว้บนกระดานกิลด์</p>
+      <dl class="tally" id="victory-tally"></dl>
+      <div class="sheet-actions">
+        <button id="btn-continue" class="btn btn-primary" type="button">ล่าต่อในป่า</button>
+        <button id="btn-home" class="btn btn-ghost" type="button">กลับหน้าหลัก</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="boot-error" class="overlay" hidden>
+    <div class="sheet">
+      <h2>เปิดโลก 3 มิติไม่ได้</h2>
+      <p>เบราว์เซอร์นี้ปิด WebGL อยู่ หรือโหลดไลบรารี Three.js ไม่สำเร็จ ลองเปิดด้วย Chrome, Edge หรือ Firefox รุ่นล่าสุด และตรวจการเชื่อมต่ออินเทอร์เน็ต</p>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="js/data.js"></script>
+<script src="js/models.js"></script>
+<script src="js/world.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/game.js"></script>
+<!-- BUILD:BODY END -->
+</body>
+</html>
