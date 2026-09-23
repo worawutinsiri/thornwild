@@ -567,6 +567,17 @@ kbd {
 .pf-gold b { color: var(--brass); font-weight: 600; font-variant-numeric: tabular-nums; }
 .hud-player.low .bar-hp { animation: pulse 1s ease-in-out infinite; }
 
+/* the Titan's six stone sockets */
+.gems { display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px; margin-top: 4px; }
+.gem { display: block; height: 10px; background: rgba(235, 226, 201, .08); box-shadow: inset 0 0 0 1px var(--line); clip-path: var(--notch-sm); }
+.gem.on { background: var(--gem); box-shadow: 0 0 8px var(--gem); }
+.slot.unique .mp { color: var(--brass); }
+.slot.locked svg { opacity: .3; }
+.slot.locked .mp { color: var(--bone-dim); }
+.slot.charged { box-shadow: inset 0 0 0 2px var(--brass); animation: charged 1.2s ease-in-out infinite; }
+.snapflash { position: fixed; inset: 0; pointer-events: none; opacity: 0; background: #fff; z-index: 5; }
+.snapflash.on { animation: snap 1.2s ease-out both; }
+
 .skillbar {
   position: absolute;
   left: 50%;
@@ -811,6 +822,8 @@ kbd {
 @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
 @keyframes pulse { 50% { box-shadow: inset 0 0 0 1px var(--ember); } }
 @keyframes ready { from { box-shadow: inset 0 0 0 2px var(--verdigris); } to { box-shadow: inset 0 0 0 1px var(--line-strong); } }
+@keyframes charged { 50% { box-shadow: inset 0 0 0 2px var(--brass), 0 0 16px rgba(212, 166, 74, .7); } }
+@keyframes snap { 0% { opacity: 1; background: #fff; } 30% { opacity: .75; background: #c9a6ff; } 100% { opacity: 0; background: #7b4fa8; } }
 @keyframes toast {
   0% { opacity: 0; transform: translateY(10px); }
   10% { opacity: 1; transform: none; }
@@ -828,21 +841,49 @@ kbd {
    right = minimap. Thumbs get the joystick (bottom-left) and the skill cluster (bottom-right).
    Portrait moves the quest under the hunter frame and the boss bar under the map. */
 .touch-on .touch-pad { display: block; }
-.touch-on .hud-menu { top: var(--gutter); left: var(--gutter); right: auto; bottom: auto; min-height: 34px; padding: 0 12px; font-size: var(--s-2); }
+/* top-left: one thin strip — [เมนู] Lv · name · gold / HP / MP — and a one-line quest chip under it */
+.touch-on .hud-menu { top: var(--gutter); left: var(--gutter); right: auto; bottom: auto; min-height: 30px; padding: 0 9px; font-size: var(--s-2); }
 .touch-on .hud-menu kbd { display: none; }
-.touch-on .hud-player { top: calc(var(--gutter) + 42px); left: var(--gutter); bottom: auto; width: min(210px, 46vw); padding: 8px 10px; gap: 4px; }
-.touch-on .pf-name { font-size: var(--s0); }
-.touch-on .bar-hp { height: 12px; }
-.touch-on .bar-mp { height: 8px; }
-.touch-on .bar span { font-size: .5625rem; }
-.touch-on .pf-gold { font-size: .6875rem; }
+.touch-on .hud-player {
+  top: var(--gutter);
+  left: calc(var(--gutter) + 50px);
+  bottom: auto;
+  width: min(190px, calc(100vw - var(--gutter) * 2 - 50px - 118px));
+  padding: 4px 8px 6px;
+  gap: 3px;
+  background: rgba(10, 16, 13, .62);
+}
+.touch-on .pf-row { gap: 6px; margin-bottom: 0; padding-right: 54px; }
+.touch-on .pf-lv { font-size: .625rem; padding: 0 5px; }
+.touch-on .pf-name { font-size: var(--s-1); font-weight: 600; }
+.touch-on .pf-class { display: none; }
+.touch-on .bar-hp { height: 9px; }
+.touch-on .bar-mp { height: 6px; }
+.touch-on .bar-xp { height: 2px; margin-top: 0; }
+.touch-on .bar span { font-size: .5rem; right: 4px; }
+.touch-on .bar-mp span { display: none; }
+.touch-on .pf-gold { position: absolute; top: 5px; right: 8px; margin: 0; font-size: .625rem; }
+.touch-on .pf-gold span { display: none; }
+.touch-on .pf-gold b::after { content: " เหรียญ"; font-weight: 500; color: var(--bone-dim); }
+.touch-on .gems { gap: 3px; margin-top: 2px; }
+.touch-on .gem { height: 6px; }
 .touch-on .hud-map { transform: scale(.6); transform-origin: top right; }
-.touch-on .hud-quest { top: var(--gutter); left: 50%; transform: translateX(-50%); width: min(300px, 38vw); padding: 6px 10px 8px; }
-.touch-on .hud-quest h3 { font-size: var(--s-1); margin: 0; }
-.touch-on .q-brief { display: none; }
-.touch-on .q-progress, .touch-on .q-nav { font-size: var(--s-2); }
-.touch-on .q-track { margin: 3px 0 5px; }
-.touch-on .hud-boss { top: calc(var(--gutter) + 86px); width: min(320px, 40vw); }
+.touch-on .hud-quest {
+  top: calc(var(--gutter) + 58px);
+  left: var(--gutter);
+  transform: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: auto;
+  max-width: min(280px, 72vw);
+  padding: 4px 10px;
+  background: rgba(10, 16, 13, .62);
+}
+.touch-on .hud-quest .eyebrow, .touch-on .hud-quest h3, .touch-on .q-brief, .touch-on .q-track { display: none; }
+.touch-on .q-nav { order: -1; margin: 0; font-size: var(--s-2); white-space: nowrap; }
+.touch-on .q-progress { gap: 6px; font-size: var(--s-2); white-space: nowrap; }
+.touch-on .hud-boss { top: calc(var(--gutter) + 60px); width: min(320px, 36vw); }
 .touch-on .boss-name .latin { font-size: 1.25rem; }
 .touch-on .skillbar {
   left: auto;
@@ -866,7 +907,6 @@ kbd {
 .touch-on .slot.potion { grid-area: po; margin: 0; height: 68px; }
 .touch-on .toasts { top: 30%; }
 @media (orientation: portrait) {
-  .touch-on .hud-quest { left: var(--gutter); transform: none; top: calc(var(--gutter) + 150px); width: min(210px, 46vw); }
   .touch-on .hud-boss { top: calc(var(--gutter) + 150px); left: auto; right: var(--gutter); transform: none; width: min(200px, 44vw); }
 }
 

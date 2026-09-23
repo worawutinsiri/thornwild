@@ -72,7 +72,33 @@ TW.CLASSES = [
       { id: 'vanish', key: '3', icon: 'vanish', name: 'อำพรางกาย', desc: 'หายตัว 4 วินาที อสูรเลิกไล่ วิ่งเร็วขึ้น และการโจมตีถัดไปแรงขึ้น 2.6 เท่า', mp: 25, cd: 16, dur: 4, bonus: 2.6 },
     ],
   },
+  {
+    id: 'thanos', th: 'ทานอส', latin: 'The Titan', role: 'ไททัน · ถุงมืออัญมณี', gems: true,
+    oath: 'จักรวาลต้องการสมดุล และข้าคือผู้ที่จะมอบมันให้',
+    desc: 'ยักษ์ผิวม่วงสวมถุงมือทองคำ ตัวหนัก หมัดหนัก อัญมณีทั้ง 6 จะสุ่มตกจากอสูรที่ล้มลง เก็บให้ครบแล้วดีดนิ้วครั้งเดียว ทุกอย่างรอบตัวจะกลายเป็นผงธุลี',
+    base: { hp: 220, mp: 80, atk: 18, def: 10, speed: 7.4, crit: 0.08 },
+    grow: { hp: 28, mp: 6, atk: 3.2, def: 1.7 },
+    mpRegen: 2.6, critMult: 1.8,
+    rating: { power: 5, tough: 5, agility: 1, reach: 2, difficulty: 3 },
+    skills: [
+      { id: 'punch', key: 'คลิก', icon: 'fist', name: 'หมัดถุงมือ', desc: 'ต่อยด้วยถุงมือทองคำ ผลักศัตรูถอยหลัง', mp: 0, cd: 0.6, mult: 1.1, range: 3.2, arc: 110 },
+      { id: 'beam', key: '1', icon: 'beam', name: 'ลำแสงพลัง', desc: 'ยิงลำแสงสีม่วงทะลุอสูรทุกตัวในแนวตรง 24 ม.', mp: 18, cd: 6, mult: 1.5, speed: 34, range: 24 },
+      { id: 'gravity', key: '2', icon: 'gravity', name: 'แรงดึงดูด', desc: 'ดึงอสูรในรัศมี 9 ม. เข้ามาหาตัว และทำให้ช้าลง 2.5 วินาที', mp: 22, cd: 9, mult: 0.8, radius: 9, slowDur: 2.5, slowF: 0.3 },
+      { id: 'snap', key: '3', icon: 'snap', name: 'ดีดนิ้ว', desc: 'ยูนีคสกิล ใช้ได้เมื่อมีอัญมณีครบ 6 เม็ด อสูรในรัศมี 14 ม. สลายเป็นผงทันที (บอสเสียพลังชีวิตครึ่งหนึ่ง) จากนั้นอัญมณีจะสลายไป ต้องล่าเก็บใหม่', mp: 0, cd: 3, radius: 14, unique: true },
+    ],
+  },
 ];
+
+/* The six stones the Titan hunts. Dropped only while playing that class. */
+TW.GEMS = [
+  { id: 'power', th: 'อัญมณีพลัง', color: 0xa64dff },
+  { id: 'space', th: 'อัญมณีอวกาศ', color: 0x3b8bff },
+  { id: 'reality', th: 'อัญมณีความจริง', color: 0xff3b3b },
+  { id: 'soul', th: 'อัญมณีวิญญาณ', color: 0xff9a2e },
+  { id: 'time', th: 'อัญมณีเวลา', color: 0x3ddc84 },
+  { id: 'mind', th: 'อัญมณีจิตใจ', color: 0xffd92e },
+];
+TW.GEM_DROP = 0.2; /* chance per kill that a missing stone drops (boss always drops one) */
 
 /* Bestiary. rank follows the guild's threat scale E (lowest) → A. */
 TW.MONSTERS = {

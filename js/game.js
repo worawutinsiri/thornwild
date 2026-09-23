@@ -58,7 +58,7 @@
   var input = { keys: {}, ndc: new T.Vector2(), mouseDown: false, attackHold: false, rDown: false, lastX: 0, lastY: 0, joy: { x: 0, y: 0, on: false }, touch: false, drag: false, moved: 0 };
   var aim = new T.Vector3();
   var player = null, preview = null;
-  var monsters = [], projectiles = [], effects = [], timers = [], zonesFx = [];
+  var monsters = [], projectiles = [], effects = [], timers = [], zonesFx = [], pickups = [];
 
   /* =============== particles =============== */
   var Particles = (function () {
@@ -209,8 +209,10 @@
   var PGEO = {
     ember: new T.IcosahedronGeometry(0.3, 0), arrow: new T.BoxGeometry(0.07, 0.07, 1.0), dagger: new T.BoxGeometry(0.1, 0.03, 0.6),
     spore: new T.IcosahedronGeometry(0.4, 1), rock: new T.DodecahedronGeometry(0.8, 0), thorn: new T.ConeGeometry(0.16, 1.0, 5),
+    beam: new T.CylinderGeometry(0.2, 0.2, 2.6, 6),
   };
   PGEO.thorn.rotateX(Math.PI / 2);
+  PGEO.beam.rotateX(Math.PI / 2);
   var PMAT = {
     ember: new T.MeshBasicMaterial({ color: 0xffb35c }),
     arrow: new T.MeshStandardMaterial({ color: 0xd8c9a3, flatShading: true }),
@@ -218,9 +220,10 @@
     spore: new T.MeshBasicMaterial({ color: 0xc77fb5 }),
     rock: new T.MeshStandardMaterial({ color: 0x7d7a6e, flatShading: true }),
     thorn: new T.MeshStandardMaterial({ color: 0x5a2e20, emissive: 0x7a2a14, emissiveIntensity: 0.5, flatShading: true }),
+    beam: new T.MeshBasicMaterial({ color: 0xc9a6ff, transparent: true, opacity: 0.85, blending: T.AdditiveBlending, depthWrite: false }),
   };
   Object.keys(PGEO).forEach(function (k) { PGEO[k].userData.shared = true; PMAT[k].userData.shared = true; });
-  var TRAIL = { ember: 0xff8a3c, spore: 0xb56fb0, dagger: 0, arrow: 0, rock: 0, thorn: 0x8a3a1a };
+  var TRAIL = { ember: 0xff8a3c, spore: 0xb56fb0, dagger: 0, arrow: 0, rock: 0, thorn: 0x8a3a1a, beam: 0xa64dff };
 
   function spawnProj(o) {
     var mesh = new T.Mesh(PGEO[o.kind], PMAT[o.kind]);
@@ -276,10 +279,11 @@
       cls: cls, name: name, model: model, pos: new T.Vector3(SPAWN.x, 0, SPAWN.z), facing: Math.PI, targetFacing: Math.PI,
       level: 1, exp: 0, gold: 0, potions: 3, hp: 0, mp: 0, maxHp: 0, maxMp: 0, atk: 0, def: 0, speed: cls.base.speed, crit: cls.base.crit,
       cds: [0, 0, 0, 0], potionCd: 0, anim: { walk: 0, move: 0, act: null }, dash: null, hopY: 0, buffs: {}, lastHurt: -99, dead: false, deathT: 0,
-      radius: 0.6, invuln: 0, knock: null, hurtFlash: 0,
+      radius: 0.6, invuln: 0, knock: null, hurtFlash: 0, gems: [],
     };
     p.pos.y = World.heightAt(p.pos.x, p.pos.z);
     recalc(p, true);
+    updateGauntlet(p);
     return p;
   }
   function recalc(p, fill) {
@@ -421,6 +425,7 @@
         case 'bow': armL = -1.55; armR = lerp(-1.55, -1.2, e); armRz = 0.4; twist = 0.35; break;
         case 'stab': var w = Math.sin(e * Math.PI); armR = -1.5 * w; armL = -1.5 * (1 - w); twist = (0.5 - e) * 0.5; break;
         case 'leap': armR = 1.0; armL = 1.0; lean = -0.3; break;
+        case 'snap': armL = e < 0.45 ? lerp(-0.3, -1.7, e / 0.45) : -1.55; armLz = -0.35; armR = 0.3; twist = 0.3; break;
       }
       if (e >= 1) a.act = null;
     }
@@ -553,6 +558,105 @@
       act(p, 'cast', 0.2);
     },
   };
+
+  /* ---- the Titan: gauntlet, stones, snap ---- */
+  SKILLS.punch = function (p, s, dir) {
+    act(p, 'swing', 0.32);
+    after(0.1, function () { if (p.dead) return; hitArc(p, dir, s.range, s.arc, s.mult, { knock: 1 }); fxArc(p.pos.x, p.pos.y, p.pos.z, p.facing, s.range, s.arc, 0xd4a64a); });
+  };
+  SKILLS.beam = function (p, s, dir) {
+    act(p, 'thrust', 0.35);
+    spawnProj({ x: p.pos.x + dir.x * 0.8, z: p.pos.z + dir.z * 0.8, h: 1.5, dx: dir.x, dz: dir.z, speed: s.speed, range: s.range, owner: 'player', kind: 'beam', mult: s.mult, radius: 1.0, pierce: true });
+    Particles.burst(p.pos.x + dir.x, p.pos.y + 1.5, p.pos.z + dir.z, 0xa64dff, 20, 3, 0.4, 0, 1);
+  };
+  SKILLS.gravity = function (p, s) {
+    act(p, 'raise', 0.4);
+    for (var i = 0; i < monsters.length; i++) {
+      var m = monsters[i];
+      if (!m.alive || m.def.boss || dist2(m.pos, p.pos) > s.radius) continue;
+      var dx = p.pos.x - m.pos.x, dz = p.pos.z - m.pos.z, l = Math.sqrt(dx * dx + dz * dz) || 1;
+      m.knock = { x: dx / l * Math.min(l, 8) * 2.2, z: dz / l * Math.min(l, 8) * 2.2, t: 0.4 };
+    }
+    hitCircle(p.pos, s.radius, s.mult, { slow: { t: s.slowDur, f: s.slowF } });
+    for (var n = 0; n < 60; n++) {
+      var a = rand(0, TAU), r = rand(3, s.radius);
+      Particles.spawn(p.pos.x + Math.cos(a) * r, p.pos.y + rand(0.3, 2.5), p.pos.z + Math.sin(a) * r, -Math.cos(a) * r * 1.6, 0, -Math.sin(a) * r * 1.6, Particles.color.setHex(0xa64dff), 0.6, 0);
+    }
+    fxRing(p.pos.x, p.pos.y, p.pos.z, s.radius, 0xa64dff, 0.5);
+  };
+  SKILLS.snap = function (p, s) {
+    if (p.gems.length < TW.GEMS.length) { UI.floater(p.pos.x, p.pos.y + 2.4, p.pos.z, 'อัญมณี ' + p.gems.length + '/' + TW.GEMS.length, 'info'); return false; }
+    act(p, 'snap', 0.9);
+    after(0.4, function () {
+      if (p.dead) return;
+      UI.snapFlash();
+      shake(1.1);
+      fxRing(p.pos.x, p.pos.y, p.pos.z, s.radius, 0xc9a6ff, 0.9);
+      Particles.burst(p.pos.x, p.pos.y + 1.6, p.pos.z, 0xc9a6ff, 120, 14, 1.0, 0, 2);
+      for (var i = 0; i < monsters.length; i++) {
+        var m = monsters[i];
+        if (!m.alive || dist2(m.pos, p.pos) > s.radius + m.def.radius) continue;
+        if (m.def.boss) {
+          var d = Math.round(m.maxHp * 0.5);
+          m.hp -= d; m.flash = 0.3; m.lastHit = G.time;
+          UI.floater(m.pos.x, m.pos.y + m.def.height * 0.85, m.pos.z, d, 'crit');
+          aggro(m);
+          if (m.hp <= 0) killMonster(m);
+        } else {
+          Particles.burst(m.pos.x, m.pos.y + m.def.height * 0.5, m.pos.z, 0x9a948a, 40, 2.5, 1.6, -1.5, 1.5);
+          killMonster(m);
+        }
+      }
+      p.gems = [];
+      updateGauntlet(p);
+      UI.toast('', 'สมดุลแล้ว', 'อัญมณีสลายไปพร้อมกับผงธุลี ล่าเก็บใหม่ได้จากอสูรตัวต่อไป', 'quiet');
+    });
+  };
+  function updateGauntlet(p) {
+    if (!p.model.gems) return;
+    for (var i = 0; i < TW.GEMS.length; i++) p.model.gems[i].material.emissiveIntensity = p.gems.indexOf(TW.GEMS[i].id) >= 0 ? 1.8 : 0;
+  }
+  var PICK_GEO = new T.IcosahedronGeometry(0.34, 0); PICK_GEO.userData.shared = true;
+  var PICK_BEAM = new T.CylinderGeometry(0.12, 0.3, 7, 8); PICK_BEAM.userData.shared = true;
+  function spawnPickup(gem, x, z) {
+    var g = new T.Group();
+    var stone = new T.Mesh(PICK_GEO, new T.MeshStandardMaterial({ color: gem.color, emissive: gem.color, emissiveIntensity: 1.4, roughness: 0.3, flatShading: true }));
+    stone.position.y = 1.0;
+    var beam = new T.Mesh(PICK_BEAM, new T.MeshBasicMaterial({ color: gem.color, transparent: true, opacity: 0.28, blending: T.AdditiveBlending, depthWrite: false }));
+    beam.position.y = 3.5;
+    g.add(stone); g.add(beam);
+    g.position.set(x, World.heightAt(x, z), z);
+    scene.add(g);
+    pickups.push({ gem: gem, g: g, stone: stone, x: x, z: z, t: rand(0, 6) });
+  }
+  function maybeDropGem(m) {
+    var missing = TW.GEMS.filter(function (g) { return player.gems.indexOf(g.id) < 0 && !pickups.some(function (pk) { return pk.gem.id === g.id; }); });
+    if (!missing.length) return;
+    if (Math.random() > (m.def.boss ? 1 : TW.GEM_DROP)) return;
+    var gem = missing[randi(0, missing.length - 1)];
+    spawnPickup(gem, m.pos.x + rand(-1.2, 1.2), m.pos.z + rand(-1.2, 1.2));
+    UI.toast('', gem.th + ' ตกลงมา', 'เดินไปเก็บที่ลำแสง ดูตำแหน่งได้บนแผนที่', 'quiet');
+  }
+  function updatePickups(dt) {
+    for (var i = pickups.length - 1; i >= 0; i--) {
+      var pk = pickups[i];
+      pk.t += dt;
+      pk.stone.rotation.y += dt * 2.5;
+      pk.stone.position.y = 1.0 + Math.sin(pk.t * 3) * 0.2;
+      if (Math.random() < dt * 4) Particles.spawn(pk.x + rand(-0.4, 0.4), pk.g.position.y + 0.5, pk.z + rand(-0.4, 0.4), 0, 2, 0, Particles.color.setHex(pk.gem.color), 0.9, -1);
+      if (player && !player.dead && dist2(player.pos, pk) < 1.9) {
+        player.gems.push(pk.gem.id);
+        updateGauntlet(player);
+        UI.floater(pk.x, pk.g.position.y + 2, pk.z, '+ ' + pk.gem.th, 'heal');
+        Particles.burst(pk.x, pk.g.position.y + 1, pk.z, pk.gem.color, 40, 4, 0.8, 0, 2);
+        scene.remove(pk.g); disposeObj(pk.g); pickups.splice(i, 1);
+        if (player.gems.length >= TW.GEMS.length) UI.toast('ถุงมือครบสมบูรณ์', 'อัญมณีครบทั้ง 6', 'กด 3 เพื่อดีดนิ้ว อสูรรอบตัวจะสลายเป็นผง', 'level');
+        else UI.toast('', pk.gem.th, 'เก็บแล้ว ' + player.gems.length + '/' + TW.GEMS.length, 'quiet');
+        saveGame();
+      }
+    }
+  }
+  function clearPickups() { pickups.forEach(function (pk) { scene.remove(pk.g); disposeObj(pk.g); }); pickups.length = 0; }
 
   function useSkill(i) {
     var p = player;
@@ -834,6 +938,7 @@
       after(0.35, function () { UI.floater(m.pos.x, m.pos.y + m.def.height * 0.6, m.pos.z, m.def.boss ? '+3 ยาฟื้นพลัง' : '+1 ยาฟื้นพลัง', 'heal'); });
     }
     Particles.burst(m.pos.x, m.pos.y + m.def.height * 0.4, m.pos.z, m.def.boss ? 0xff8a3c : 0xebe2c9, m.def.boss ? 160 : 26, m.def.boss ? 9 : 5, 0.9, 4, 3);
+    if (player.cls.gems) maybeDropGem(m);
     questProgress(m.type);
     if (m.def.boss) {
       UI.boss(false, 0);
@@ -1162,6 +1267,7 @@
     projectiles.forEach(function (p) { scene.remove(p.mesh); }); projectiles.length = 0;
     effects.forEach(function (e) { scene.remove(e.obj); disposeObj(e.obj); }); effects.length = 0;
     timers.length = 0; zonesFx.length = 0;
+    clearPickups();
     UI.clearFloaters();
     UI.boss(false, 0);
     ['pause', 'death', 'victory', 'howto'].forEach(function (id) { UI.overlay(id, false); });
@@ -1189,8 +1295,9 @@
     var P = World.PREVIEW, y = World.heightAt(P.x, P.z);
     preview.root.position.set(P.x, y, P.z);
     preview.anim = { walk: 0, move: 0, act: null };
-    var flourish = { warrior: 'swing', mage: 'raise', ranger: 'bow', assassin: 'stab' }[clsId];
+    var flourish = { warrior: 'swing', mage: 'raise', ranger: 'bow', assassin: 'stab', thanos: 'snap' }[clsId] || 'raise';
     preview.anim.act = { type: flourish, dur: 0.6, t: -0.2 };
+    if (preview.gems) preview.gems.forEach(function (g) { g.material.emissiveIntensity = 1.6; });
     scene.add(preview.root);
     Particles.burst(P.x, y + 1, P.z, 0x6cc2ab, 40, 3, 0.8, 0, 2);
   }
@@ -1212,7 +1319,12 @@
       G.quest = restore.quest || G.quest; G.stats.kills = restore.kills || 0; G.stats.start = G.time - (restore.elapsed || 0);
       G.victoryShown = G.quest.idx >= TW.QUESTS.length;
       if (restore.x != null) { player.pos.set(restore.x, 0, restore.z); player.pos.y = World.heightAt(restore.x, restore.z); }
+      if (player.cls.gems && Array.isArray(restore.gems)) {
+        player.gems = restore.gems.filter(function (id) { return TW.GEMS.some(function (g) { return g.id === id; }); });
+        updateGauntlet(player);
+      }
     }
+    clearPickups();
     G.token = (restore && restore.token) || newToken();
     resetMonsters();
     cam.yaw = 0; cam.shake = 0;
@@ -1369,6 +1481,7 @@
         debugAuto(dt);
         updatePlayer(dt);
         updateZonesFx(dt);
+        updatePickups(dt);
         if (!player.dead) { updateQuestNav(dt); updateZone(dt); }
         saveT += dt;
         if (saveT >= 10) { saveT = 0; saveGame(); }
@@ -1391,7 +1504,11 @@
     if (G.mode === 'game') {
       UI.hud(player, { active: player.buffs });
       hudT -= dt;
-      if (hudT <= 0) { hudT = 0.08; UI.minimap(player, monsters, TW.QUESTS[G.quest.idx] ? TW.ZONE_BY_ID[TW.QUESTS[G.quest.idx].zone] : null, G.time); }
+      if (hudT <= 0) {
+        hudT = 0.08;
+        var gemDots = pickups.length ? pickups.map(function (pk) { return { x: pk.x, z: pk.z, color: '#' + ('000000' + pk.gem.color.toString(16)).slice(-6) }; }) : null;
+        UI.minimap(player, monsters, TW.QUESTS[G.quest.idx] ? TW.ZONE_BY_ID[TW.QUESTS[G.quest.idx].zone] : null, G.time, gemDots);
+      }
     }
     UI.updateFloaters(camera, dt, window.innerWidth, window.innerHeight);
     renderer.render(scene, camera);
@@ -1400,7 +1517,7 @@
   /* =============== boot =============== */
   function snapshot() {
     if (G.mode !== 'game' || !player) return {};
-    return { cls: player.cls.id, name: player.name, level: player.level, exp: player.exp, gold: player.gold, potions: player.potions, quest: G.quest, kills: G.stats.kills, x: player.pos.x, z: player.pos.z, elapsed: G.time - G.stats.start };
+    return { cls: player.cls.id, name: player.name, level: player.level, exp: player.exp, gold: player.gold, potions: player.potions, gems: player.gems.slice(), quest: G.quest, kills: G.stats.kills, x: player.pos.x, z: player.pos.z, elapsed: G.time - G.stats.start };
   }
   var autoT = 0;
   function debugAuto(dt) {
@@ -1434,6 +1551,8 @@
     /* test hooks used by tools/smoke.mjs */
     player: function () { return player; },
     monsters: function () { return monsters; },
+    pickups: function () { return pickups; },
+    grantGems: function () { if (player && player.cls.gems) { player.gems = TW.GEMS.map(function (g) { return g.id; }); updateGauntlet(player); } },
     forceDeath: function () { if (player && !player.dead) { player.hp = 0; playerDie(); } },
     forceBossKill: function () { for (var i = 0; i < monsters.length; i++) if (monsters[i].def.boss && monsters[i].alive) { monsters[i].hp = 0; killMonster(monsters[i]); } },
   };

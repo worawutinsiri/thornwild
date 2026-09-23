@@ -203,6 +203,25 @@ try {
       expect(p.potions < 3 || p.hp === p.maxHp, c.id + ' potion key consumed a potion or was full');
       const engaged = G.monsters().some((m) => m.state === 'chase' || m.state === 'windup' || m.hp < m.maxHp || !m.alive);
       expect(engaged, c.id + ' monsters reacted to the player');
+      if (c.gems) {
+        G.state.debugAuto = false;
+        key('Digit3'); frame(10, 'snap locked');
+        expect(p.gems.length < sandbox.TW.GEMS.length && p.cds[3] === 0, 'snap refused without all stones');
+        G.grantGems(); frame(2, 'grant');
+        expect(byId.get('unique-count').textContent === '6/6', 'HUD shows 6/6 stones');
+        key('Escape'); frame(3, 'save with stones');
+        expect(JSON.parse(store.get('tw.save.v1') || '{}').gems?.length === 6, 'save stores the six stones');
+        click('btn-resume'); frame(5, 'resume');
+        const near = G.monsters().filter((m) => m.alive && !m.def.boss && Math.hypot(m.pos.x - p.pos.x, m.pos.z - p.pos.z) < 10).length;
+        const killsBefore = G.state.stats.kills;
+        key('Digit3'); frame(60, 'snap');
+        expect(p.gems.length === 0, 'snap consumed the stones');
+        expect(G.state.stats.kills >= killsBefore + near, 'snap killed every monster nearby (' + near + ' within 10 m)');
+        key('Escape'); frame(3, 'save after snap');
+        expect(JSON.parse(store.get('tw.save.v1') || '{}').gems?.length === 0, 'save clears the used stones');
+        click('btn-resume'); frame(5, 'resume');
+        G.state.debugAuto = true;
+      }
       key('Escape'); frame(10, 'pause ' + c.id);
       expect(G.state.paused && !byId.get('ov-pause').hidden, 'escape pauses');
       click('btn-resume'); frame(30, 'resume ' + c.id);

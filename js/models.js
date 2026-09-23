@@ -142,6 +142,28 @@
       });
       return h;
     },
+    /* The Titan: purple giant in blue-and-gold armour, gold gauntlet on the left hand
+       with six stone sockets (h.gems) the game lights up as they are collected. */
+    thanos: function () {
+      var h = humanoid({ skin: 0x8a5fb3, torso: 0x2f4f8a, legs: 0x33344d, arms: 0x8a5fb3, boots: 0xb8902c, belt: 0xb8902c });
+      h.body.scale.set(1.14, 1.12, 1.14);
+      var gold = mk(0xd4a64a, { metalness: 0.6, roughness: 0.3 });
+      part(box(0.82, 0.26, 0.48), gold, 0, 1.74, 0, h.body);
+      part(box(0.3, 0.5, 0.06), gold, 0, 1.36, 0.22, h.body);
+      part(box(0.38, 0.2, 0.44), gold, 0, 0.04, 0, h.armL);
+      part(box(0.38, 0.2, 0.44), gold, 0, 0.04, 0, h.armR);
+      var ridge = mk(0x6f4a95);
+      for (var i = 0; i < 3; i++) part(box(0.05, 0.16, 0.05), ridge, -0.08 + i * 0.08, 0.04, 0.26, h.head);
+      part(box(0.3, 0.34, 0.3), gold, 0, -0.06, 0.02, h.handL);
+      var slots = [[0.04, -0.09], [0.04, 0.09], [-0.09, -0.11], [-0.09, 0.0], [-0.09, 0.11], [-0.2, 0.0]];
+      h.gems = [];
+      TW.GEMS.forEach(function (gem, k) {
+        var m = part(ico(0.055, 0), glow(gem.color, 0), -0.16, slots[k][0], 0.02 + slots[k][1], h.handL);
+        m.material.userData.gem = true;
+        h.gems.push(m);
+      });
+      return h;
+    },
   };
 
   /* ---------- monsters ---------- */
@@ -304,6 +326,7 @@
   M.tint = function (h, hex, amount) {
     for (var i = 0; i < h.mats.length; i++) {
       var m = h.mats[i];
+      if (m.userData.gem) continue;
       if (amount > 0) { m.emissive.setHex(hex); m.emissiveIntensity = amount; }
       else { m.emissive.copy(m.userData.baseEmissive); m.emissiveIntensity = m.userData.baseEI; }
     }
