@@ -254,6 +254,23 @@ try {
       key('ShiftLeft'); frame(1, 'dodge again');
       expect(!p.dash, 'a second Shift during cooldown does nothing');
       G.teleport(2, 142); frame(80, 'cooldown');
+      /* elites: thorns reflect, volatile explodes after death, summoner calls minions */
+      const el = G.monsters().find((m) => m.type === 'slime' && m.alive && !m.elite);
+      G.makeElite(el, 'thorns'); frame(1, 'elite');
+      expect(el.elite && el.def.hp === Math.round(sandbox.TW.MONSTERS.slime.hp * sandbox.TW.ELITE.hp) && el.eliteName.length > 0, 'elite slime gets tripled hp and a name');
+      G.teleport(el.pos.x + 1.5, el.pos.z); frame(2, 'beside elite');
+      const hpBefore = p.hp;
+      G.hit(el, 20); frame(2, 'hit thorns');
+      expect(p.hp < hpBefore, 'thorns reflected damage to the hunter');
+      G.makeElite(el, 'volatile'); G.hit(el, 99999); frame(3, 'kill volatile');
+      const hpBeforeBlast = p.hp; frame(70, 'fuse');
+      expect(p.hp < hpBeforeBlast, 'volatile elite blast hurt the hunter standing on it');
+      const el2 = G.monsters().find((m) => m.type === 'slime' && m.alive && !m.elite && m !== el);
+      const countBefore = G.monsters().length;
+      G.makeElite(el2, 'summoner'); G.teleport(el2.pos.x + 3, el2.pos.z); frame(30, 'summon');
+      expect(G.monsters().length === countBefore + 2, 'summoner elite called two minions');
+      G.hit(el2, 99999); frame(2, 'kill summoner');
+      G.teleport(2, 142); frame(60, 'settle');
       G.state.debugAuto = true;
       key('KeyW'); frame(240, 'play ' + c.id); key('KeyW', true);
       expect(p.pos.z < 140, c.id + ' walked north (z=' + p.pos.z.toFixed(1) + ')');

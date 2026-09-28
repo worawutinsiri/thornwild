@@ -658,6 +658,7 @@
     m.lastHit = G.time;
     if (p.bonus.lifesteal > 0 && p.hp < p.maxHp) p.hp = Math.min(p.maxHp, p.hp + dmg * p.bonus.lifesteal / 100);
     if (crit) G.hitstop = Math.max(G.hitstop, 0.04);
+    if (m.elite && m.elite.reflect && !opts.dot) damagePlayer(dmg * m.elite.reflect, m, true);
     UI.floater(m.pos.x + rand(-0.4, 0.4), m.pos.y + m.def.height * 0.85, m.pos.z, dmg, crit ? 'crit' : 'hit');
     Particles.burst(m.pos.x, m.pos.y + m.def.height * 0.5, m.pos.z, crit ? 0xd4a64a : 0xebe2c9, crit ? 18 : 8, 4, 0.4, 5);
     if (opts.slow) m.slow = { t: opts.slow.t, f: opts.slow.f };
@@ -676,10 +677,11 @@
     Particles.burst(m.pos.x, m.pos.y + m.def.height * 0.5, m.pos.z, 0x9ad14b, 4, 2, 0.5, 0, 2);
     if (m.hp <= 0) killMonster(m);
   }
-  function damagePlayer(raw, src) {
+  /* flat = skip the defence formula (reflected damage) */
+  function damagePlayer(raw, src, flat) {
     var p = player;
     if (!p || p.dead || p.invuln > 0) return;
-    var dmg = raw * rand(0.9, 1.1) * 40 / (40 + p.def);
+    var dmg = flat ? raw : raw * rand(0.9, 1.1) * 40 / (40 + p.def);
     if (p.buffs.ironwill) dmg *= 1 - p.buffs.ironwill.reduce;
     dmg = Math.max(1, Math.round(dmg));
     p.hp -= dmg;
@@ -733,17 +735,46 @@
     scene.add(g);
     return { g: g, fg: fg, w: w };
   }
-  function spawnMonster(type, zone, x, z) {
+  /* ---- elites: a stat layer plus one affix on top of a normal monster ---- */
+  var ELITE_FG = new T.MeshBasicMaterial({ color: 0xb57bff, transparent: true, depthTest: false }); ELITE_FG.userData.shared = true;
+  var AURA_GEO = new T.RingGeometry(0.75, 1.0, 36); AURA_GEO.rotateX(-Math.PI / 2); AURA_GEO.userData.shared = true;
+  function makeElite(m, affixId) {
+    var E = TW.ELITE, base = m.baseDef;
+    var affix = affixId ? E.affixes.filter(function (a) { return a.id === affixId; })[0] : E.affixes[Math.floor(Math.random() * E.affixes.length)];
+    m.elite = affix;
+    m.def = Object.assign({}, base, {
+      hp: Math.round(base.hp * E.hp), atk: base.atk * E.atk, def: base.def + E.def, exp: base.exp * E.exp,
+      gold: [base.gold[0] * E.gold, base.gold[1] * E.gold], speed: base.speed * (affix.speed || 1), atkCd: base.atkCd * (affix.atkCd || 1),
+    });
+    m.maxHp = m.def.hp; m.hp = m.maxHp;
+    m.eliteName = base.th + affix.th;
+    m.summoned = false;
+    m.model.root.scale.setScalar(E.scale);
+    if (m.bar) m.bar.fg.material = ELITE_FG;
+    var aura = new T.Mesh(AURA_GEO, new T.MeshBasicMaterial({ color: affix.hex, transparent: true, opacity: 0.6, blending: T.AdditiveBlending, depthWrite: false, side: T.DoubleSide }));
+    aura.scale.setScalar(base.radius * 1.6 + 0.6);
+    scene.add(aura);
+    m.aura = aura;
+  }
+  function clearElite(m) {
+    if (m.aura) { scene.remove(m.aura); m.aura.material.dispose(); m.aura = null; }
+    if (m.bar) m.bar.fg.material = BAR_FG;
+    m.elite = null; m.eliteName = ''; m.def = m.baseDef; m.maxHp = m.baseDef.hp;
+    m.model.root.scale.setScalar(1);
+  }
+  function spawnMonster(type, zone, x, z, temp) {
     var def = TW.MONSTERS[type];
     var model = Models.monster(type);
     scene.add(model.root);
     var m = {
-      type: type, def: def, model: model, bar: def.boss ? null : makeBar(def), zone: zone,
+      type: type, def: def, baseDef: def, elite: null, aura: null, eliteName: '', temp: !!temp, summoned: false, gone: false,
+      model: model, bar: def.boss ? null : makeBar(def), zone: zone,
       pos: new T.Vector3(x, World.heightAt(x, z), z), home: { x: x, z: z }, hp: def.hp, maxHp: def.hp, alive: true,
       state: 'idle', wanderT: rand(0, 3), tx: x, tz: z, facing: rand(0, TAU), atkT: rand(0, 1), windT: 0, windMax: 1, attackKind: 'melee', tele: null,
       flash: 0, stun: 0, slow: null, poison: null, knock: null, anim: rand(0, 6), deathT: 0, respawn: 0, tint: '', pattern: 0, enraged: false, lunge: 0, lastHit: -99,
     };
     monsters.push(m);
+    if (!temp && !def.boss && Math.random() < TW.ELITE.chance) makeElite(m);
     return m;
   }
   function populate() {
@@ -767,10 +798,13 @@
   }
   function resetMonsters() { monsters.forEach(function (m) { respawnMonster(m); }); }
   function respawnMonster(m) {
+    clearElite(m);
+    if (!m.baseDef.boss && !m.temp && Math.random() < TW.ELITE.chance) makeElite(m);
     m.alive = true; m.hp = m.maxHp; m.state = 'idle'; m.wanderT = rand(1, 4);
     m.pos.set(m.home.x, World.heightAt(m.home.x, m.home.z), m.home.z);
     m.stun = 0; m.slow = null; m.poison = null; m.knock = null; m.enraged = false; m.pattern = 0; m.flash = 0; m.lunge = 0;
-    m.model.root.visible = true; m.model.root.scale.setScalar(1);
+    m.model.root.visible = true; m.model.root.scale.setScalar(m.elite ? TW.ELITE.scale : 1);
+    if (m.aura) m.aura.visible = true;
     m.model.root.rotation.set(0, m.facing, 0);
     Models.tint(m.model, 0, 0); m.tint = '';
     if (m.bar) m.bar.g.visible = false;
@@ -779,6 +813,15 @@
     if (!m.alive || m.state === 'chase' || m.state === 'windup' || !player || player.dead) return;
     if (m.state === 'return' && m.hp < m.maxHp * 0.5) return;
     m.state = 'chase';
+    if (m.elite && m.elite.minions && !m.summoned) {
+      m.summoned = true;
+      for (var k = 0; k < m.elite.minions; k++) {
+        var a = rand(0, TAU), mm = spawnMonster(m.type, m.zone, m.pos.x + Math.cos(a) * 2.5, m.pos.z + Math.sin(a) * 2.5, true);
+        mm.state = 'chase';
+        Particles.burst(mm.pos.x, mm.pos.y + 1, mm.pos.z, m.elite.hex, 24, 3, 0.6, 0, 2);
+      }
+      UI.toast('', m.eliteName + 'เรียกพวก', '', 'quiet');
+    }
     if (m.def.pack) {
       for (var i = 0; i < monsters.length; i++) {
         var o = monsters[i];
@@ -870,8 +913,21 @@
     m.alive = false; m.state = 'dead'; m.deathT = 0; m.respawn = m.def.boss ? 120 : 24;
     m.stun = 0; m.slow = null; m.poison = null;
     if (m.bar) m.bar.g.visible = false;
+    if (m.aura) m.aura.visible = false;
     G.stats.kills++;
     G.hitstop = Math.max(G.hitstop, m.def.boss ? 0.22 : 0.06);
+    if (m.elite && m.elite.blast) {
+      /* volatile elites: a fuse, a red ring, then a blast where the corpse fell */
+      var bx = m.pos.x, bz = m.pos.z, br = m.elite.blast, bdmg = m.def.atk * m.elite.blastMult;
+      telegraph(bx, bz, br, m.elite.fuse, 0xff9a3c);
+      after(m.elite.fuse, function () {
+        var y = World.heightAt(bx, bz);
+        fxRing(bx, y, bz, br, 0xff9a3c, 0.5);
+        Particles.burst(bx, y + 0.6, bz, 0xff9a3c, 70, 9, 0.8, 5, 4);
+        shake(0.4);
+        if (player && !player.dead && dist2(player.pos, { x: bx, z: bz }) < br + player.radius) damagePlayer(bdmg, m);
+      });
+    }
     gainExp(m.def.exp);
     var gold = Math.round(randi(m.def.gold[0], m.def.gold[1]) * (1 + player.bonus.goldPct / 100));
     player.gold += gold;
@@ -903,8 +959,12 @@
       m.deathT += dt;
       if (m.deathT < 0.7) {
         var k = 1 - m.deathT / 0.7;
-        md.root.scale.setScalar(Math.max(0.01, k));
+        md.root.scale.setScalar(Math.max(0.01, k) * (m.elite ? TW.ELITE.scale : 1));
         md.root.position.y = m.pos.y - (1 - k) * 0.6;
+      } else if (m.temp) {
+        /* summoned minions never come back */
+        if (!m.gone) { m.gone = true; scene.remove(md.root); Models.dispose(md.root); if (m.bar) scene.remove(m.bar.g); clearElite(m); }
+        return;
       } else md.root.visible = false;
       m.respawn -= dt;
       if (m.respawn <= 0) respawnMonster(m);
@@ -984,6 +1044,11 @@
     animateMonster(m, dt, moving, slowF);
     md.root.position.copy(m.pos);
     md.root.rotation.set(0, m.facing, 0);
+    if (m.elite) {
+      m.aura.position.set(m.pos.x, m.pos.y + 0.12, m.pos.z);
+      m.aura.rotation.y += dt * 1.5;
+      if (m.elite.regen && m.hp < m.maxHp && G.time - m.lastHit > 2) m.hp = Math.min(m.maxHp, m.hp + m.maxHp * m.elite.regen * dt);
+    }
     if (m.bar) {
       var show = (m.hp < m.maxHp || m.state === 'chase' || m.state === 'windup') && dp < 70;
       m.bar.g.visible = show;
@@ -1423,6 +1488,14 @@
   function updateLootLabels() {
     lootList.length = 0;
     if (G.mode === 'game' && player) {
+      /* elites wear their name and affix over their heads */
+      for (var e = 0; e < monsters.length && lootList.length < 6; e++) {
+        var em = monsters[e];
+        if (!em.alive || !em.elite || dist2(player.pos, em.pos) > 30) continue;
+        lootV.set(em.pos.x, em.pos.y + em.def.height * TW.ELITE.scale + 0.6, em.pos.z).project(camera);
+        if (lootV.z > 1) continue;
+        lootList.push({ x: (lootV.x + 1) / 2 * window.innerWidth, y: (1 - lootV.y) / 2 * window.innerHeight, name: em.eliteName, color: em.elite.color });
+      }
       for (var i = 0; i < pickups.length && lootList.length < 8; i++) {
         var pk = pickups[i];
         if (dist2(player.pos, pk) > 24) continue;
@@ -1712,6 +1785,7 @@
         if (saveT >= 10) { saveT = 0; saveGame(); }
       }
       for (var i = 0; i < monsters.length; i++) updateMonster(monsters[i], dt);
+      for (var gi = monsters.length - 1; gi >= 0; gi--) if (monsters[gi].gone) monsters.splice(gi, 1);
       separateMonsters();
       updateNpc(dt);
       updateProjectiles(dt);
@@ -1784,6 +1858,8 @@
     equip: function () { return player ? player.equip : {}; },
     debugDrop: function (x, z, ilvl, rarity) { spawnItemPickup(TW.Items.roll(ilvl || 3, 0, null, rarity), x, z); },
     dodge: dodge,
+    makeElite: function (m, affixId) { clearElite(m); makeElite(m, affixId); m.hp = m.maxHp; },
+    hit: function (m, amount) { damageMonster(m, amount, {}); },
     forceQuestComplete: function () { var q = TW.QUESTS[G.quest.idx]; if (q && G.quest.state === 'active') { G.quest.progress = q.count - 1; questProgress(q.target); } },
     forceDeath: function () { if (player && !player.dead) { player.hp = 0; playerDie(); } },
     forceBossKill: function () { for (var i = 0; i < monsters.length; i++) if (monsters[i].def.boss && monsters[i].alive) { monsters[i].hp = 0; killMonster(monsters[i]); } },

@@ -205,6 +205,19 @@ TW.STAT_LABELS = {
 TW.BAG_SIZE = 20;
 /* Universal dodge roll: distance, speed (m/s → ~0.35 s of i-frames), cooldown */
 TW.DODGE = { dist: 5.5, speed: 16, cd: 1.2 };
+
+/* Elites: any non-boss monster may spawn as one (chance per spawn). Stats multiply the base
+   type and one affix is rolled. drop = chance of an item (rarity boosted one tier). */
+TW.ELITE = {
+  chance: 0.1, hp: 3, atk: 1.6, def: 2, exp: 3, gold: 3, scale: 1.35, drop: 0.6,
+  affixes: [
+    { id: 'swift', th: 'ว่องไว', desc: 'เคลื่อนที่และโจมตีเร็วขึ้น', color: '#5aa9ff', hex: 0x5aa9ff, speed: 1.4, atkCd: 0.7 },
+    { id: 'thorns', th: 'หนาม', desc: 'สะท้อน 25% ของความเสียหายที่ได้รับ', color: '#e4683a', hex: 0xe4683a, reflect: 0.25 },
+    { id: 'regen', th: 'ฟื้นตัว', desc: 'ฟื้น 3% ต่อวิเมื่อไม่โดนตี 2 วิ', color: '#7fd06a', hex: 0x7fd06a, regen: 0.03 },
+    { id: 'volatile', th: 'ระเบิด', desc: 'ระเบิดหลังตาย 0.8 วิ รัศมี 4 ม.', color: '#ff9a3c', hex: 0xff9a3c, blast: 4, blastMult: 1.5, fuse: 0.8 },
+    { id: 'summoner', th: 'ผู้เรียกพวก', desc: 'เรียกพวกอีก 2 ตัวเมื่อเห็นผู้เล่น', color: '#b57bff', hex: 0xb57bff, minions: 2 },
+  ],
+};
 TW.ITEM_DROP = 0.22; /* chance per kill; elites and bosses roll more and better */
 
 TW.expToNext = function (level) { return 50 + (level - 1) * 45; };

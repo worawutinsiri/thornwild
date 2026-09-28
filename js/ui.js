@@ -401,6 +401,9 @@
         ctx.fillStyle = '#e4683a';
         ctx.beginPath(); ctx.arc(tx(m.pos.x), tz(m.pos.z), 3.2, 0, 6.283); ctx.fill();
         ctx.strokeStyle = '#ebe2c9'; ctx.lineWidth = 1; ctx.stroke();
+      } else if (m.elite) {
+        ctx.fillStyle = m.elite.color;
+        ctx.fillRect(tx(m.pos.x) - 2.2, tz(m.pos.z) - 2.2, 4.4, 4.4);
       } else {
         ctx.fillStyle = m.state === 'chase' || m.state === 'windup' ? '#ff7a4a' : 'rgba(228,104,58,0.75)';
         ctx.fillRect(tx(m.pos.x) - 1.3, tz(m.pos.z) - 1.3, 2.6, 2.6);
