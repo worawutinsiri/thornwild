@@ -53,13 +53,13 @@
   var VILLAGE = TW.ZONE_BY_ID.village;
   var SPAWN = { x: World.PREVIEW.x, z: World.PREVIEW.z };
 
-  var G = { mode: 'title', paused: false, time: 0, victoryShown: false, quest: { idx: 0, progress: 0, state: 'available' }, stats: { kills: 0, start: 0 }, cls: 'warrior', previewYaw: 0, zone: null, dialogOpen: false };
+  var G = { mode: 'title', paused: false, time: 0, victoryShown: false, quest: { idx: 0, progress: 0, state: 'available' }, stats: { kills: 0, start: 0 }, cls: 'warrior', previewYaw: 0, zone: null, dialogOpen: false, panel: null, invSel: null };
   var cam = { yaw: 0, pitch: 0.95, dist: 22, shake: 0, target: new T.Vector3() };
   /* mouse: left = walk to the cursor, right = basic attack toward it, middle drag (or Q/E) = camera */
   var input = { keys: {}, ndc: new T.Vector2(), lDown: false, rDown: false, mDown: false, attackHold: false, lastX: 0, lastY: 0, joy: { x: 0, y: 0, on: false }, touch: false, drag: false, dragId: null, tapX: 0, tapY: 0, tapT: 0, tapMoved: 0 };
   var aim = new T.Vector3();
   var player = null, preview = null;
-  var monsters = [], projectiles = [], effects = [], timers = [], zonesFx = [];
+  var monsters = [], projectiles = [], effects = [], timers = [], zonesFx = [], pickups = [];
 
   /* =============== particles =============== */
   var Particles = (function () {
@@ -278,16 +278,23 @@
       level: 1, exp: 0, gold: 0, potions: 3, hp: 0, mp: 0, maxHp: 0, maxMp: 0, atk: 0, def: 0, speed: cls.base.speed, crit: cls.base.crit,
       cds: [0, 0, 0, 0], potionCd: 0, anim: { walk: 0, move: 0, act: null }, dash: null, hopY: 0, buffs: {}, lastHurt: -99, dead: false, deathT: 0,
       radius: 0.6, invuln: 0, knock: null, hurtFlash: 0,
+      inventory: [], equip: { weapon: null, armor: null, trinket: null }, bonus: TW.Items.bonus({}),
     };
     p.pos.y = World.heightAt(p.pos.x, p.pos.z);
     recalc(p, true);
     return p;
   }
+  /* class base + level growth + everything worn. fill = refill hp/mp (level up, respawn) */
   function recalc(p, fill) {
-    var b = p.cls.base, g = p.cls.grow, L = p.level - 1;
-    p.maxHp = Math.round(b.hp + g.hp * L); p.maxMp = Math.round(b.mp + g.mp * L);
-    p.atk = b.atk + g.atk * L; p.def = b.def + g.def * L;
+    var b = p.cls.base, g = p.cls.grow, L = p.level - 1, e = p.bonus = TW.Items.bonus(p.equip);
+    var oldMax = p.maxHp || 1, ratio = p.hp / oldMax;
+    p.maxHp = Math.round(b.hp + g.hp * L + e.hp); p.maxMp = Math.round(b.mp + g.mp * L);
+    p.atk = (b.atk + g.atk * L + e.atk) * (1 + e.atkPct / 100);
+    p.def = b.def + g.def * L + e.def;
+    p.crit = b.crit + e.crit / 100;
+    p.speed = b.speed * (1 + e.speedPct / 100);
     if (fill) { p.hp = p.maxHp; p.mp = p.maxMp; }
+    else { p.hp = Math.min(p.maxHp, Math.max(1, Math.round(ratio * p.maxHp))); p.mp = Math.min(p.mp, p.maxMp); }
   }
   function gainExp(n) {
     var p = player;
@@ -343,7 +350,7 @@
     var inVillage = dist2(p.pos, VILLAGE) < VILLAGE.r;
     var ooc = G.time - p.lastHurt > 5;
     p.hp = Math.min(p.maxHp, p.hp + p.maxHp * (inVillage ? 0.06 : (ooc ? 0.012 : 0)) * dt);
-    p.mp = Math.min(p.maxMp, p.mp + (p.cls.mpRegen + (inVillage ? p.maxMp * 0.05 : 0)) * dt);
+    p.mp = Math.min(p.maxMp, p.mp + (p.cls.mpRegen + p.bonus.mpRegen + (inVillage ? p.maxMp * 0.05 : 0)) * dt);
     if (p.buffs.ironwill) p.hp = Math.min(p.maxHp, p.hp + p.maxHp * p.buffs.ironwill.heal / p.buffs.ironwill.dur * dt);
 
     /* movement relative to the camera */
@@ -569,7 +576,7 @@
 
   function useSkill(i) {
     var p = player;
-    if (!p || p.dead || G.paused || G.mode !== 'game' || G.dialogOpen) return;
+    if (!p || p.dead || G.paused || G.panel || G.mode !== 'game' || G.dialogOpen) return;
     var s = p.cls.skills[i];
     if (p.cds[i] > 0 || p.dash) return;
     if (p.mp < s.mp) { if (i > 0) UI.floater(p.pos.x, p.pos.y + 2.4, p.pos.z, 'MP ไม่พอ', 'info'); return; }
@@ -579,15 +586,15 @@
     var ok = SKILLS[s.id](p, s, dir);
     if (ok === false) return;
     p.mp -= s.mp;
-    p.cds[i] = s.cd;
+    p.cds[i] = s.cd * (1 - p.bonus.cdr / 100);
     p.moveTo = null;
   }
   function usePotion() {
     var p = player;
-    if (!p || p.dead || p.potionCd > 0 || G.paused || G.dialogOpen) return;
+    if (!p || p.dead || p.potionCd > 0 || G.paused || G.panel || G.dialogOpen) return;
     if (p.potions <= 0) { UI.floater(p.pos.x, p.pos.y + 2.4, p.pos.z, 'ไม่มียาแล้ว', 'info'); return; }
     p.potions--; p.potionCd = 1.5;
-    var heal = Math.round(p.maxHp * 0.4);
+    var heal = Math.round(p.maxHp * 0.4 * (1 + p.bonus.potionPct / 100));
     p.hp = Math.min(p.maxHp, p.hp + heal);
     UI.floater(p.pos.x, p.pos.y + 2.4, p.pos.z, '+' + heal, 'heal');
     Particles.burst(p.pos.x, p.pos.y + 1, p.pos.z, 0x7fd6c0, 30, 3, 0.8, -2, 2);
@@ -628,6 +635,7 @@
     m.hp -= dmg;
     m.flash = 0.12;
     m.lastHit = G.time;
+    if (p.bonus.lifesteal > 0 && p.hp < p.maxHp) p.hp = Math.min(p.maxHp, p.hp + dmg * p.bonus.lifesteal / 100);
     UI.floater(m.pos.x + rand(-0.4, 0.4), m.pos.y + m.def.height * 0.85, m.pos.z, dmg, crit ? 'crit' : 'hit');
     Particles.burst(m.pos.x, m.pos.y + m.def.height * 0.5, m.pos.z, crit ? 0xd4a64a : 0xebe2c9, crit ? 18 : 8, 4, 0.4, 5);
     if (opts.slow) m.slow = { t: opts.slow.t, f: opts.slow.f };
@@ -840,8 +848,9 @@
     if (m.bar) m.bar.g.visible = false;
     G.stats.kills++;
     gainExp(m.def.exp);
-    var gold = randi(m.def.gold[0], m.def.gold[1]);
+    var gold = Math.round(randi(m.def.gold[0], m.def.gold[1]) * (1 + player.bonus.goldPct / 100));
     player.gold += gold;
+    maybeDropItem(m);
     UI.floater(m.pos.x, m.pos.y + m.def.height * 0.6, m.pos.z, '+' + gold + ' เหรียญ', 'gold');
     if (Math.random() < (m.def.boss ? 1 : 0.12)) {
       player.potions += m.def.boss ? 3 : 1;
@@ -1244,6 +1253,10 @@
     projectiles.forEach(function (p) { scene.remove(p.mesh); }); projectiles.length = 0;
     effects.forEach(function (e) { scene.remove(e.obj); disposeObj(e.obj); }); effects.length = 0;
     timers.length = 0; zonesFx.length = 0;
+    clearPickups();
+    G.panel = null; G.invSel = null;
+    UI.inventory(false);
+    UI.setBagNew(false);
     UI.clearFloaters();
     UI.boss(false, 0);
     ['pause', 'death', 'victory', 'howto'].forEach(function (id) { UI.overlay(id, false); });
@@ -1299,6 +1312,10 @@
         G.quest.state = restore.quest.state || (G.quest.progress > 0 ? 'active' : 'available');
       }
       G.stats.kills = restore.kills || 0; G.stats.start = G.time - (restore.elapsed || 0);
+      if (Array.isArray(restore.inventory)) player.inventory = restore.inventory.filter(TW.Items.valid).slice(0, TW.BAG_SIZE);
+      if (restore.equip) TW.SLOTS.forEach(function (s) { var it = restore.equip[s.id]; player.equip[s.id] = TW.Items.valid(it) && it.slot === s.id ? it : null; });
+      TW.Items.adoptUids(player.inventory.concat(TW.SLOTS.map(function (s) { return player.equip[s.id]; })));
+      recalc(player, true);
       G.victoryShown = G.quest.idx >= TW.QUESTS.length;
       if (restore.x != null) { player.pos.set(restore.x, 0, restore.z); player.pos.y = World.heightAt(restore.x, restore.z); }
     }
@@ -1331,6 +1348,129 @@
     if (on) saveGame();
   }
 
+  /* =============== loot on the ground & the bag =============== */
+  var PICK_GEO = new T.IcosahedronGeometry(0.32, 0); PICK_GEO.userData.shared = true;
+  var PICK_BEAM = new T.CylinderGeometry(0.1, 0.28, 6, 8); PICK_BEAM.userData.shared = true;
+  function spawnItemPickup(item, x, z) {
+    var rar = TW.Items.rarity(item);
+    var g = new T.Group();
+    var stone = new T.Mesh(PICK_GEO, new T.MeshStandardMaterial({ color: rar.hex, emissive: rar.hex, emissiveIntensity: 0.9 + item.rarity * 0.2, roughness: 0.35, flatShading: true }));
+    stone.position.y = 0.9;
+    var beam = new T.Mesh(PICK_BEAM, new T.MeshBasicMaterial({ color: rar.hex, transparent: true, opacity: 0.12 + item.rarity * 0.06, blending: T.AdditiveBlending, depthWrite: false }));
+    beam.position.y = 3.0;
+    g.add(stone); g.add(beam);
+    g.position.set(x, World.heightAt(x, z), z);
+    scene.add(g);
+    pickups.push({ kind: 'item', item: item, g: g, stone: stone, x: x, z: z, t: rand(0, 6), warned: false });
+    if (item.rarity >= 3) UI.toast('', TW.Items.rarity(item).th + '!', item.name + ' ตกลงมา', 'quiet');
+  }
+  function maybeDropItem(m) {
+    var n = m.def.boss ? 2 : (Math.random() < TW.ITEM_DROP ? 1 : 0);
+    for (var k = 0; k < n; k++) {
+      var item = TW.Items.roll(m.def.lv + (Math.random() < 0.5 ? 1 : 0), m.def.boss ? 2 : (m.elite ? 1 : 0));
+      spawnItemPickup(item, m.pos.x + rand(-1.3, 1.3), m.pos.z + rand(-1.3, 1.3));
+    }
+  }
+  function updatePickups(dt) {
+    for (var i = pickups.length - 1; i >= 0; i--) {
+      var pk = pickups[i];
+      pk.t += dt;
+      pk.stone.rotation.y += dt * 2.2;
+      pk.stone.position.y = 0.9 + Math.sin(pk.t * 3) * 0.18;
+      if (Math.random() < dt * 2.5) Particles.spawn(pk.x + rand(-0.3, 0.3), pk.g.position.y + 0.4, pk.z + rand(-0.3, 0.3), 0, 1.6, 0, Particles.color.setHex(TW.Items.rarity(pk.item).hex), 0.8, -0.8);
+      if (!player || player.dead || dist2(player.pos, pk) > 1.9) continue;
+      if (player.inventory.length >= TW.BAG_SIZE) {
+        if (!pk.warned) { pk.warned = true; UI.floater(pk.x, pk.g.position.y + 2, pk.z, 'กระเป๋าเต็ม', 'info'); }
+        continue;
+      }
+      var rar = TW.Items.rarity(pk.item);
+      player.inventory.push(pk.item);
+      UI.floater(pk.x, pk.g.position.y + 2.2, pk.z, pk.item.name, 'item', rar.color);
+      Particles.burst(pk.x, pk.g.position.y + 1, pk.z, rar.hex, 24, 3, 0.7, 0, 2);
+      scene.remove(pk.g); disposeObj(pk.g); pickups.splice(i, 1);
+      UI.setBagNew(true);
+      saveGame();
+    }
+  }
+  function clearPickups() { pickups.forEach(function (pk) { scene.remove(pk.g); disposeObj(pk.g); }); pickups.length = 0; UI.lootLabels([]); }
+  var lootV = new T.Vector3(), lootList = [];
+  function updateLootLabels() {
+    lootList.length = 0;
+    if (G.mode === 'game' && player) {
+      for (var i = 0; i < pickups.length && lootList.length < 8; i++) {
+        var pk = pickups[i];
+        if (dist2(player.pos, pk) > 24) continue;
+        lootV.set(pk.x, pk.g.position.y + 1.6, pk.z).project(camera);
+        if (lootV.z > 1) continue;
+        lootList.push({ x: (lootV.x + 1) / 2 * window.innerWidth, y: (1 - lootV.y) / 2 * window.innerHeight, name: pk.item.name, color: TW.Items.rarity(pk.item).color });
+      }
+    }
+    UI.lootLabels(lootList);
+  }
+
+  /* ---- inventory panel ---- */
+  function statLines(p) {
+    var e = p.bonus, out = [
+      { label: 'พลังโจมตี', value: Math.round(p.atk) }, { label: 'ป้องกัน', value: Math.round(p.def) },
+      { label: 'พลังชีวิต', value: p.maxHp }, { label: 'พลังเวท', value: p.maxMp },
+      { label: 'คริติคอล', value: Math.round(p.crit * 100) + '%' }, { label: 'ความเร็ว', value: p.speed.toFixed(1) + ' ม./วิ' },
+    ];
+    if (e.cdr) out.push({ label: 'ลดคูลดาวน์', value: Math.round(e.cdr) + '%' });
+    if (e.mpRegen) out.push({ label: 'ฟื้นพลังเวทเพิ่ม', value: '+' + e.mpRegen.toFixed(1) + '/วิ' });
+    if (e.lifesteal) out.push({ label: 'ดูดเลือด', value: Math.round(e.lifesteal) + '%' });
+    if (e.goldPct) out.push({ label: 'เหรียญที่ได้', value: '+' + Math.round(e.goldPct) + '%' });
+    if (e.potionPct) out.push({ label: 'ประสิทธิภาพยา', value: '+' + Math.round(e.potionPct) + '%' });
+    return out;
+  }
+  function findItem(uid) { for (var i = 0; i < player.inventory.length; i++) if (player.inventory[i].uid === uid) return i; return -1; }
+  function renderInventory() {
+    var p = player, sel = null, equipped = false;
+    if (G.invSel && G.invSel.uid != null) { var i = findItem(G.invSel.uid); sel = i >= 0 ? p.inventory[i] : null; }
+    else if (G.invSel && G.invSel.slot) { sel = p.equip[G.invSel.slot]; equipped = !!sel; }
+    if (!sel) G.invSel = null;
+    UI.inventory(true, { equip: p.equip, items: p.inventory, stats: statLines(p), selected: sel, equipped: equipped, compare: sel ? p.equip[sel.slot] : null });
+  }
+  function toggleInventory(on) {
+    if (G.mode !== 'game' || !player) return;
+    if (on == null) on = !G.panel;
+    if (on && (player.dead || G.paused || UI.anyOverlay())) return;
+    G.panel = on ? 'inventory' : null;
+    input.keys = {}; input.lDown = false; input.rDown = false; input.attackHold = false;
+    if (on) { G.invSel = null; UI.setBagNew(false); if (G.dialogOpen) closeDialog(); renderInventory(); }
+    else UI.inventory(false);
+  }
+  function equipItem(uid) {
+    var p = player, i = findItem(uid);
+    if (i < 0) return;
+    var item = p.inventory[i], cur = p.equip[item.slot];
+    p.inventory.splice(i, 1);
+    p.equip[item.slot] = item;
+    if (cur) p.inventory.push(cur);
+    recalc(p, false);
+    G.invSel = { slot: item.slot };
+    renderInventory();
+    saveGame();
+  }
+  function unequipItem(slot) {
+    var p = player, item = p.equip[slot];
+    if (!item) return;
+    if (p.inventory.length >= TW.BAG_SIZE) { UI.toast('', 'กระเป๋าเต็ม', 'ทิ้งหรือสวมของอื่นก่อน', 'quiet'); return; }
+    p.equip[slot] = null;
+    p.inventory.push(item);
+    recalc(p, false);
+    G.invSel = { uid: item.uid };
+    renderInventory();
+    saveGame();
+  }
+  function discardItem(uid) {
+    var i = findItem(uid);
+    if (i < 0) return;
+    player.inventory.splice(i, 1);
+    G.invSel = null;
+    renderInventory();
+    saveGame();
+  }
+
   /* ---- click-to-move ---- */
   var gpV = new T.Vector3();
   /* March the cursor ray against the height field until it dips under the terrain. */
@@ -1358,7 +1498,7 @@
   /* fresh = a new press (drops a marker, may target the villager); false = held button following the cursor */
   function clickMove(fresh) {
     var p = player;
-    if (!p || p.dead || G.paused || G.mode !== 'game' || UI.anyOverlay()) return;
+    if (!p || p.dead || G.paused || G.panel || G.mode !== 'game' || UI.anyOverlay()) return;
     if (fresh && npc) {
       ray.setFromCamera(input.ndc, camera);
       if (ray.intersectObject(npc.model.root, true).length) {
@@ -1384,8 +1524,9 @@
     if (e.code === 'Space' || e.code.indexOf('Arrow') === 0) e.preventDefault();
     if (e.repeat) return;
     if (G.mode === 'game') {
-      if (e.code === 'Escape') { if (G.dialogOpen) { closeDialog(); return; } if (UI.anyOverlay() && !G.paused) return; togglePause(); }
-      if (G.paused || player.dead) return;
+      if (e.code === 'Escape') { if (G.panel) { toggleInventory(false); return; } if (G.dialogOpen) { closeDialog(); return; } if (UI.anyOverlay() && !G.paused) return; togglePause(); }
+      if (e.code === 'KeyI') { toggleInventory(); return; }
+      if (G.paused || G.panel || player.dead) return;
       if (e.code === 'Space') { if (G.dialogOpen) closeDialog(); else openDialog(); return; }
       if (e.code === 'Digit1') useSkill(1);
       else if (e.code === 'Digit2') useSkill(2);
@@ -1478,6 +1619,10 @@
 
   UI.on('talk', function () { if (G.dialogOpen) closeDialog(); else openDialog(); });
   UI.on('dialog', dialogAction);
+  UI.on('inventory', function (on) { toggleInventory(on === false ? false : undefined); });
+  UI.on('inv-select', function (uid) { G.invSel = { uid: uid }; renderInventory(); });
+  UI.on('inv-select-equip', function (slot) { G.invSel = { slot: slot }; renderInventory(); });
+  UI.on('inv-act', function (act, id) { if (act === 'equip') equipItem(id); else if (act === 'unequip') unequipItem(id); else if (act === 'drop') discardItem(id); });
   UI.on('start', showClass);
   UI.on('back', showTitle);
   UI.on('continue-save', function () { var s = loadSave(); if (s) startGame(s.cls, s.name || TW.HUNTER_NAMES[0], s); });
@@ -1521,7 +1666,7 @@
     requestAnimationFrame(frame);
     var dt = Math.min(0.05, (now - last) / 1000);
     last = now;
-    if (G.paused) dt = 0;
+    if (G.paused || G.panel) dt = 0;
     G.time += dt;
     if (dt > 0) {
       updateTimers(dt);
@@ -1530,6 +1675,7 @@
         debugAuto(dt);
         updatePlayer(dt);
         updateZonesFx(dt);
+        updatePickups(dt);
         if (!player.dead) { updateQuestNav(dt); updateZone(dt); }
         if (G.dialogOpen && !npcInRange()) closeDialog();
         saveT += dt;
@@ -1552,6 +1698,7 @@
     updateCamera(dt);
     world.sky.position.copy(camera.position);
     updateNpcLabel();
+    updateLootLabels();
     if (G.mode === 'game') {
       UI.hud(player, { active: player.buffs });
       hudT -= dt;
@@ -1564,7 +1711,7 @@
   /* =============== boot =============== */
   function snapshot() {
     if (G.mode !== 'game' || !player) return {};
-    return { cls: player.cls.id, name: player.name, level: player.level, exp: player.exp, gold: player.gold, potions: player.potions, quest: G.quest, kills: G.stats.kills, x: player.pos.x, z: player.pos.z, elapsed: G.time - G.stats.start };
+    return { cls: player.cls.id, name: player.name, level: player.level, exp: player.exp, gold: player.gold, potions: player.potions, quest: G.quest, kills: G.stats.kills, x: player.pos.x, z: player.pos.z, elapsed: G.time - G.stats.start, inventory: player.inventory, equip: player.equip };
   }
   var autoT = 0;
   function debugAuto(dt) {
@@ -1602,6 +1749,10 @@
     monsters: function () { return monsters; },
     teleport: function (x, z) { if (player) { player.pos.set(x, 0, z); player.pos.y = World.heightAt(x, z); cam.target.set(x, player.pos.y + 1.4, z); } },
     npc: function () { return npc; },
+    pickups: function () { return pickups; },
+    inventory: function () { return player ? player.inventory : []; },
+    equip: function () { return player ? player.equip : {}; },
+    debugDrop: function (x, z, ilvl, rarity) { spawnItemPickup(TW.Items.roll(ilvl || 3, 0, null, rarity), x, z); },
     forceQuestComplete: function () { var q = TW.QUESTS[G.quest.idx]; if (q && G.quest.state === 'active') { G.quest.progress = q.count - 1; questProgress(q.target); } },
     forceDeath: function () { if (player && !player.dead) { player.hp = 0; playerDie(); } },
     forceBossKill: function () { for (var i = 0; i < monsters.length; i++) if (monsters[i].def.boss && monsters[i].alive) { monsters[i].hp = 0; killMonster(monsters[i]); } },

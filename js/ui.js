@@ -32,6 +32,9 @@
     star: '<path d="M12 10v12M12 2l2 3-2 3-2-3z"/><path d="M6 5h2M16 5h2M8 9l-1 1M16 9l1 1"/>',
     bow: '<path d="M7 3c10 4 10 14 0 18M7 3v18M4 12h14M18 12l-3-2M18 12l-3 2"/>',
     daggers: '<path d="M5 3l9 11M19 3l-9 11M8 13l3 3M16 13l-3 3M12 16l-3 5M12 16l3 5"/>',
+    armor: '<path d="M9 3l3 2 3-2 4 3-2 4-2-1v12H9V9L7 10 3 6z"/>',
+    ring: '<circle cx="12" cy="14" r="6"/><path d="M9 4h6l2 3H7z"/>',
+    bag: '<path d="M6 8h12l1 12H5z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/>',
   };
   function svg(name) {
     return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + (ICONS[name] || '') + '</svg>';
@@ -116,6 +119,16 @@
     $('dlg-actions').addEventListener('click', function (e) {
       var b = e.target.closest('[data-act]');
       if (b) emit('dialog', b.dataset.act);
+    });
+    $('btn-inv').addEventListener('click', function () { emit('inventory'); });
+    $('btn-inv-close').addEventListener('click', function () { emit('inventory', false); });
+    $('inv').addEventListener('click', function (e) {
+      var act = e.target.closest('[data-act]');
+      if (act) { emit('inv-act', act.dataset.act, act.dataset.uid ? +act.dataset.uid : act.dataset.slot); return; }
+      var tile = e.target.closest('[data-uid]');
+      if (tile) { emit('inv-select', +tile.dataset.uid); return; }
+      var eq = e.target.closest('[data-equip]');
+      if (eq) emit('inv-select-equip', eq.dataset.equip);
     });
 
     /* touch: joystick pad */
@@ -329,11 +342,12 @@
 
   /* ---------- floating combat text ---------- */
   var floaters = [], V = new THREE.Vector3();
-  UI.floater = function (x, y, z, text, kind) {
+  UI.floater = function (x, y, z, text, kind, color) {
     if (floaters.length > 44) { var old = floaters.shift(); old.el.remove(); }
     var el = document.createElement('span');
     el.className = 'floater ' + (kind || '');
     el.textContent = text;
+    if (color) el.style.color = color;
     $('floaters').appendChild(el);
     floaters.push({ el: el, x: x, y: y, z: z, t: 0, life: kind === 'crit' ? 1.15 : 0.95, dx: (Math.random() - 0.5) * 36, kind: kind });
   };
@@ -490,6 +504,73 @@
     if (first && !state.touch) setTimeout(function () { first.focus({ preventScroll: true }); }, 20);
   };
   UI.dialogOpen = function () { return !$('dialog').hidden; };
+
+  /* ---------- loot on the ground: name tags ---------- */
+  var lootEls = [];
+  UI.lootLabels = function (list) {
+    var wrap = $('loot-labels');
+    for (var i = 0; i < list.length; i++) {
+      var el = lootEls[i];
+      if (!el) { el = document.createElement('span'); el.className = 'loot-label'; wrap.appendChild(el); lootEls.push(el); }
+      var it = list[i];
+      if (el._name !== it.name) { el._name = it.name; el.textContent = it.name; el.style.setProperty('--rar', it.color); }
+      el.hidden = false;
+      el.style.transform = 'translate(' + it.x.toFixed(1) + 'px,' + it.y.toFixed(1) + 'px) translate(-50%,-100%)';
+    }
+    for (var j = list.length; j < lootEls.length; j++) lootEls[j].hidden = true;
+  };
+  UI.setBagNew = function (on) { $('btn-inv').classList.toggle('has-new', !!on); };
+
+  /* ---------- inventory panel ----------
+     view: { equip, items, stats:[{label,value}], selected: item|null, equipped: bool, compare: item|null } */
+  UI.inventory = function (open, v) {
+    var el = $('inv');
+    el.hidden = !open;
+    if (!open) return;
+    var Items = TW.Items, h = '';
+    TW.SLOTS.forEach(function (s) {
+      var it = v.equip[s.id], rar = it ? Items.rarity(it) : null, sel = v.selected && it && v.selected.uid === it.uid;
+      h += '<button type="button" class="equip-slot' + (sel ? ' selected' : '') + '" data-equip="' + s.id + '" style="--rar:' + (rar ? rar.color : 'var(--bone-dim)') + '">' +
+        '<span class="tile' + (it ? ' filled' : '') + '" style="--rar:' + (rar ? rar.color : 'var(--line)') + '">' + svg(s.icon) + (it ? '<span class="lv">' + it.ilvl + '</span>' : '') + '</span>' +
+        '<span><small>' + s.th + '</small><b></b></span></button>';
+    });
+    $('equip-slots').innerHTML = h;
+    var names = $('equip-slots').querySelectorAll('.equip-slot b');
+    TW.SLOTS.forEach(function (s, i) { var it = v.equip[s.id]; names[i].textContent = it ? it.name : 'ว่าง'; });
+    h = '';
+    v.stats.forEach(function (s) { h += '<dt></dt><dd></dd>'; });
+    $('stat-list').innerHTML = h;
+    var dts = $('stat-list').querySelectorAll('dt'), dds = $('stat-list').querySelectorAll('dd');
+    v.stats.forEach(function (s, i) { dts[i].textContent = s.label; dds[i].textContent = s.value; });
+    h = '';
+    for (var i = 0; i < TW.BAG_SIZE; i++) {
+      var it2 = v.items[i];
+      if (it2) {
+        var r2 = Items.rarity(it2), sl = Items.slot(it2.slot), sel2 = v.selected && v.selected.uid === it2.uid;
+        h += '<button type="button" class="tile filled' + (sel2 ? ' selected' : '') + '" data-uid="' + it2.uid + '" style="--rar:' + r2.color + '" title="' + it2.name + '">' + svg(sl.icon) + '<span class="lv">' + it2.ilvl + '</span></button>';
+      } else h += '<span class="tile"></span>';
+    }
+    $('bag-grid').innerHTML = h;
+    $('bag-count').textContent = v.items.length + '/' + TW.BAG_SIZE;
+    var card = $('item-card');
+    if (!v.selected) { card.innerHTML = '<p class="card-empty">เลือกของในกระเป๋าหรือช่องสวมใส่เพื่อดูรายละเอียด</p>'; return; }
+    var it3 = v.selected, r3 = Items.rarity(it3), slot3 = Items.slot(it3.slot), lines = Items.lines(it3), diffs = {};
+    if (!v.equipped) Items.compare(it3, v.compare).forEach(function (d) { diffs[d.stat] = d.diff; });
+    h = '<p class="card-name" style="--rar:' + r3.color + '"></p><p class="card-meta">' + r3.th + ' · ' + slot3.th + ' · ระดับ ' + it3.ilvl + (v.equipped ? ' · สวมใส่อยู่' : '') + '</p><ul class="card-lines">';
+    lines.forEach(function (l) {
+      var d = diffs[l.stat];
+      h += '<li' + (l.main ? ' class="main"' : '') + '><span>' + Items.label(l.stat) + '</span><span>' + Items.fmt(l.stat, l.value, true) +
+        (d != null ? ' <span class="d ' + (d > 0 ? 'up' : 'down') + '">(' + Items.fmt(l.stat, d, true) + ')</span>' : '') + '</span></li>';
+      delete diffs[l.stat];
+    });
+    Object.keys(diffs).forEach(function (k) { h += '<li><span>' + Items.label(k) + '</span><span class="d ' + (diffs[k] > 0 ? 'up' : 'down') + '">' + Items.fmt(k, diffs[k], true) + '</span></li>'; });
+    h += '</ul><div class="card-actions">';
+    if (v.equipped) h += '<button type="button" class="btn btn-ghost" data-act="unequip" data-slot="' + it3.slot + '">ถอด</button>';
+    else h += '<button type="button" class="btn btn-primary" data-act="equip" data-uid="' + it3.uid + '">สวมใส่</button><button type="button" class="btn btn-ghost" data-act="drop" data-uid="' + it3.uid + '">ทิ้ง</button>';
+    h += '</div>';
+    card.innerHTML = h;
+    card.querySelector('.card-name').textContent = it3.name;
+  };
 
   TW.UI = UI;
 })();

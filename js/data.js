@@ -146,5 +146,64 @@ TW.NPC = {
 
 TW.HUNTER_NAMES = ['คีริน', 'ไลร่า', 'ธาวิน', 'เซเรน', 'โรวาน', 'อลิซา', 'กาเรธ', 'นภัส'];
 
+/* ---------- loot & equipment ---------- */
+/* Rarity tiers: drop weight, number of extra affixes, and a multiplier on the main stat. */
+TW.RARITY = [
+  { id: 'common', th: 'ธรรมดา', suffix: '', color: '#ebe2c9', hex: 0xebe2c9, weight: 60, affixes: 0, mult: 1.0 },
+  { id: 'uncommon', th: 'อย่างดี', suffix: 'อย่างดี', color: '#7fd06a', hex: 0x7fd06a, weight: 25, affixes: 1, mult: 1.1 },
+  { id: 'rare', th: 'หายาก', suffix: 'ประณีต', color: '#5aa9ff', hex: 0x5aa9ff, weight: 10, affixes: 2, mult: 1.22 },
+  { id: 'epic', th: 'มหากาพย์', suffix: 'แห่งหนาม', color: '#b57bff', hex: 0xb57bff, weight: 4, affixes: 3, mult: 1.38 },
+  { id: 'legendary', th: 'ตำนาน', suffix: 'แห่งธอร์นไวลด์', color: '#ff9a3c', hex: 0xff9a3c, weight: 1, affixes: 4, mult: 1.6 },
+];
+TW.SLOTS = [
+  { id: 'weapon', th: 'อาวุธ', icon: 'sword' },
+  { id: 'armor', th: 'เกราะ', icon: 'armor' },
+  { id: 'trinket', th: 'เครื่องประดับ', icon: 'ring' },
+];
+/* Base items. main = the stat every copy has (base + perLv × item level), second = a fixed bonus line. Any class can wear anything. */
+TW.ITEM_BASES = {
+  weapon: [
+    { id: 'blade', th: 'ดาบนักล่า', stat: 'atk', base: 3, perLv: 1.1 },
+    { id: 'axe', th: 'ขวานป่า', stat: 'atk', base: 3.6, perLv: 1.2 },
+    { id: 'staff', th: 'ไม้เท้าหนาม', stat: 'atk', base: 2.5, perLv: 1.0, second: { stat: 'mpRegen', base: 0.5, perLv: 0.08 } },
+    { id: 'bow', th: 'ธนูไม้สน', stat: 'atk', base: 2.8, perLv: 1.05, second: { stat: 'crit', base: 1, perLv: 0.2 } },
+    { id: 'daggers', th: 'มีดคู่เงา', stat: 'atk', base: 2.4, perLv: 0.95, second: { stat: 'crit', base: 2, perLv: 0.3 } },
+  ],
+  armor: [
+    { id: 'leather', th: 'เสื้อหนัง', stat: 'def', base: 1.5, perLv: 0.5, second: { stat: 'hp', base: 8, perLv: 4 } },
+    { id: 'chain', th: 'เกราะโซ่', stat: 'def', base: 2.2, perLv: 0.6, second: { stat: 'hp', base: 5, perLv: 3 } },
+    { id: 'mosscloak', th: 'เสื้อคลุมมอส', stat: 'def', base: 1.0, perLv: 0.4, second: { stat: 'hp', base: 12, perLv: 5 } },
+    { id: 'wolfscale', th: 'เกราะเกล็ดหมาป่า', stat: 'def', base: 2.0, perLv: 0.55, second: { stat: 'speedPct', base: 1, perLv: 0.2 } },
+  ],
+  trinket: [
+    { id: 'ring', th: 'แหวนกิลด์', stat: 'crit', base: 2, perLv: 0.3 },
+    { id: 'fangchain', th: 'สร้อยเขี้ยว', stat: 'atkPct', base: 3, perLv: 0.4 },
+    { id: 'leafpin', th: 'เข็มกลัดใบไม้', stat: 'mpRegen', base: 0.6, perLv: 0.1 },
+    { id: 'thornband', th: 'กำไลหนาม', stat: 'hp', base: 10, perLv: 5 },
+    { id: 'sporecharm', th: 'เครื่องรางสปอร์', stat: 'speedPct', base: 2, perLv: 0.3 },
+  ],
+};
+/* Random affixes: value = lerp(per[0], per[1], ilvl/20) × roll 0.8–1.2 */
+TW.AFFIXES = [
+  { id: 'atkp', stat: 'atkPct', per: [4, 12] },
+  { id: 'hp', stat: 'hp', per: [10, 45] },
+  { id: 'def', stat: 'def', per: [1, 4] },
+  { id: 'crit', stat: 'crit', per: [2, 8] },
+  { id: 'speed', stat: 'speedPct', per: [3, 10] },
+  { id: 'cdr', stat: 'cdr', per: [4, 12] },
+  { id: 'mpregen', stat: 'mpRegen', per: [0.5, 2] },
+  { id: 'lifesteal', stat: 'lifesteal', per: [2, 6] },
+  { id: 'gold', stat: 'goldPct', per: [10, 30] },
+  { id: 'potion', stat: 'potionPct', per: [10, 30] },
+];
+/* How each stat reads on an item card. pct → shown with %, dec → one decimal. */
+TW.STAT_LABELS = {
+  atk: { th: 'พลังโจมตี' }, def: { th: 'ป้องกัน' }, hp: { th: 'พลังชีวิต' }, crit: { th: 'โอกาสคริติคอล', pct: true },
+  atkPct: { th: 'พลังโจมตี', pct: true }, speedPct: { th: 'ความเร็วเคลื่อนที่', pct: true }, cdr: { th: 'ลดคูลดาวน์', pct: true },
+  mpRegen: { th: 'ฟื้นพลังเวท/วิ', dec: true }, lifesteal: { th: 'ดูดเลือด', pct: true }, goldPct: { th: 'เหรียญที่ได้', pct: true }, potionPct: { th: 'ประสิทธิภาพยา', pct: true },
+};
+TW.BAG_SIZE = 20;
+TW.ITEM_DROP = 0.22; /* chance per kill; elites and bosses roll more and better */
+
 TW.expToNext = function (level) { return 50 + (level - 1) * 45; };
 TW.MAX_LEVEL = 20;

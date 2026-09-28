@@ -178,7 +178,7 @@ function dlg(act) {
 
 const onlyClass = process.argv[2], onlyFrames = +(process.argv[3] || 900);
 if (onlyClass && onlyClass !== 'flow') sandbox.location.search = '?class=' + onlyClass + '&auto=1';
-for (const f of ['js/data.js', 'js/models.js', 'js/world.js', 'js/ui.js', 'js/game.js']) run(f, read(f));
+for (const f of ['js/data.js', 'js/items.js', 'js/models.js', 'js/world.js', 'js/ui.js', 'js/game.js']) run(f, read(f));
 
 const G = sandbox.TW.Game;
 const expect = (cond, msg) => { if (!cond) failures.push('assert: ' + msg); };
@@ -215,6 +215,26 @@ try {
       dlg('close'); frame(2, 'close');
       expect(byId.get('dialog').hidden, 'dialog closes');
       G.teleport(2, 142); frame(2, 'back to the square');
+      /* loot: a rare drop on the ground → walk over → bag → equip → stats move */
+      G.debugDrop(p.pos.x + 4, p.pos.z, 3, 2); frame(2, 'drop');
+      expect(G.pickups().length === 1, 'an item pickup spawned (' + G.pickups().length + ')');
+      G.teleport(p.pos.x + 4, p.pos.z); frame(5, 'pick up');
+      expect(G.inventory().length === 1 && G.pickups().length === 0, 'walking over loot puts it in the bag');
+      key('KeyI'); frame(2, 'open bag');
+      expect(!byId.get('inv').hidden && G.state.panel === 'inventory', 'I opens the inventory and pauses');
+      const it = G.inventory()[0];
+      const statsBefore = JSON.stringify([p.atk, p.maxHp, p.def, p.crit, p.speed, p.bonus]);
+      byId.get('inv').dispatch('click', { target: query(byId.get('bag-grid'), '[data-uid="' + it.uid + '"]')[0] }); frame(1, 'select');
+      const equipBtn = query(byId.get('item-card'), '[data-act="equip"]')[0];
+      expect(!!equipBtn, 'selecting a bag item shows the equip button');
+      byId.get('inv').dispatch('click', { target: equipBtn }); frame(1, 'equip');
+      expect(G.equip()[it.slot] && G.equip()[it.slot].uid === it.uid && G.inventory().length === 0, 'equip moves the item into its slot');
+      expect(JSON.stringify([p.atk, p.maxHp, p.def, p.crit, p.speed, p.bonus]) !== statsBefore, 'equipping changes the hunter stats');
+      byId.get('inv').dispatch('click', { target: query(byId.get('equip-slots'), '[data-equip="' + it.slot + '"]')[0] }); frame(1, 'select worn');
+      const unequipBtn = query(byId.get('item-card'), '[data-act="unequip"]')[0];
+      expect(!!unequipBtn, 'selecting a worn item shows the unequip button');
+      key('KeyI'); frame(2, 'close bag');
+      expect(byId.get('inv').hidden && !G.state.panel, 'I closes the inventory');
       /* mouse: left click walks to the cursor, right click attacks */
       const scene = byId.get('scene');
       scene.dispatch('pointerdown', { button: 0, pointerType: 'mouse', pointerId: 1, clientX: 640, clientY: 120 });

@@ -106,6 +106,7 @@
     <div class="skillbar" id="skillbar"></div>
 
     <button id="btn-pause" class="hud-menu" type="button">เมนู <kbd>Esc</kbd></button>
+    <button id="btn-inv" class="hud-inv" type="button">กระเป๋า <kbd>I</kbd></button>
 
     <button class="npc-label" id="npc-label" type="button" hidden><b id="npc-name">—</b><span id="npc-title"></span><em id="npc-hint"></em></button>
     <section class="dialog" id="dialog" hidden aria-live="polite">
@@ -123,7 +124,31 @@
   </section>
 
   <div id="floaters" class="floaters" aria-hidden="true"></div>
+  <div id="loot-labels" class="loot-labels" aria-hidden="true"></div>
   <div id="toasts" class="toasts" aria-live="polite"></div>
+
+  <!-- ============ INVENTORY PANEL ============ -->
+  <section class="panel" id="inv" hidden aria-label="กระเป๋าและอุปกรณ์">
+    <div class="panel-sheet">
+      <header class="panel-top">
+        <div><p class="eyebrow">สัมภาระนักล่า</p><h2>อุปกรณ์และกระเป๋า</h2></div>
+        <button id="btn-inv-close" class="btn btn-ghost" type="button">ปิด <kbd>I</kbd></button>
+      </header>
+      <div class="panel-body">
+        <div class="equip-col">
+          <p class="bag-title">สวมใส่อยู่</p>
+          <div class="equip-slots" id="equip-slots"></div>
+          <dl class="stat-list" id="stat-list"></dl>
+        </div>
+        <div class="bag-col">
+          <p class="bag-title">กระเป๋า <span id="bag-count">0/20</span></p>
+          <div class="bag-grid" id="bag-grid"></div>
+          <p class="bag-hint">คลิกของเพื่อดูรายละเอียดและเทียบกับที่สวมอยู่ · เดินทับของที่ตกบนพื้นเพื่อเก็บ</p>
+        </div>
+        <aside class="item-card" id="item-card"><p class="card-empty">เลือกของในกระเป๋าหรือช่องสวมใส่เพื่อดูรายละเอียด</p></aside>
+      </div>
+    </div>
+  </section>
 
   <!-- ============ OVERLAYS ============ -->
   <div id="ov-howto" class="overlay" hidden>
@@ -136,6 +161,7 @@
         <dt><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd></dt><dd>ทักษะประจำอาชีพ (เล็งตามเมาส์)</dd>
         <dt><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></dt><dd>เดินด้วยคีย์บอร์ดก็ได้ (หรือปุ่มลูกศร)</dd>
         <dt><kbd>F</kbd></dt><dd>ดื่มยาฟื้นพลัง (ฟื้น 40% ของพลังชีวิต)</dd>
+        <dt><kbd>I</kbd></dt><dd>เปิดกระเป๋าและอุปกรณ์ · ของที่อสูรทิ้งจะเป็นลำแสงสีตามความหายาก เดินทับเพื่อเก็บ</dd>
         <dt><kbd>Space</kbd></dt><dd>คุยกับหัวหน้ากิลด์ที่กระดานประกาศ เพื่อรับและส่งมอบประกาศล่า</dd>
         <dt>ลากเมาส์กลาง · <kbd>Q</kbd><kbd>E</kbd></dt><dd>หมุนกล้อง</dd>
         <dt>ล้อเมาส์</dt><dd>ซูมเข้า–ออก</dd>
@@ -161,6 +187,7 @@
         <dt><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd></dt><dd>ทักษะ</dd>
         <dt><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></dt><dd>เดินด้วยคีย์บอร์ด</dd>
         <dt><kbd>F</kbd></dt><dd>ยาฟื้นพลัง</dd>
+        <dt><kbd>I</kbd></dt><dd>กระเป๋า/อุปกรณ์</dd>
         <dt><kbd>Space</kbd></dt><dd>คุยกับหัวหน้ากิลด์ รับ/ส่งประกาศ</dd>
         <dt>ลากเมาส์กลาง · <kbd>Q</kbd><kbd>E</kbd></dt><dd>หมุนกล้อง</dd>
       </dl>
@@ -208,6 +235,7 @@
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="js/data.js"></script>
+<script src="js/items.js"></script>
 <script src="js/models.js"></script>
 <script src="js/world.js"></script>
 <script src="js/ui.js"></script>

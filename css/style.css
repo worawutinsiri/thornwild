@@ -888,6 +888,133 @@ kbd {
 .tally dd { margin: 0; font-size: var(--s2); font-weight: 700; font-variant-numeric: tabular-nums; color: var(--bone); }
 .sheet-actions { display: flex; flex-wrap: wrap; gap: 10px; }
 
+/* ---------- loot & inventory ---------- */
+.loot-labels { position: fixed; inset: 0; pointer-events: none; overflow: hidden; }
+.loot-label {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform: translate(-50%, -100%);
+  padding: 2px 8px;
+  font-size: var(--s-2);
+  font-weight: 600;
+  color: var(--rar, var(--bone));
+  background: rgba(10, 16, 13, .72);
+  box-shadow: inset 0 0 0 1px var(--rar, var(--line));
+  clip-path: var(--notch-sm);
+  white-space: nowrap;
+}
+.hud-inv {
+  pointer-events: auto;
+  position: absolute;
+  right: calc(var(--gutter) + 108px);
+  bottom: var(--gutter);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 0 14px;
+  border: 0;
+  background: rgba(10, 16, 13, .72);
+  box-shadow: inset 0 0 0 1px var(--line);
+  font-size: var(--s-1);
+  clip-path: var(--notch-sm);
+}
+.hud-inv.has-new { box-shadow: inset 0 0 0 1px var(--brass); animation: pulse-brass 1.2s ease-in-out infinite; }
+@keyframes pulse-brass { 50% { box-shadow: inset 0 0 0 2px var(--brass); } }
+
+/* panels: full-screen sheets that pause the world (inventory, later shops) */
+.panel {
+  pointer-events: auto;
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgba(8, 12, 10, .7);
+  -webkit-backdrop-filter: blur(3px);
+  backdrop-filter: blur(3px);
+  animation: fade .2s ease both;
+  z-index: 9;
+}
+.panel-sheet {
+  width: min(980px, 100%);
+  max-height: calc(100% - 16px);
+  overflow: auto;
+  padding: 22px 26px;
+  background: var(--ink-2);
+  box-shadow: inset 0 0 0 1px var(--line-strong);
+  clip-path: var(--notch);
+  scrollbar-width: thin;
+}
+.panel-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 16px; }
+.panel-top h2 { margin: 2px 0 0; font-family: var(--f-head); font-size: var(--s2); font-weight: 700; }
+.panel-top .btn { min-height: 40px; padding: 0 16px; font-size: var(--s-1); }
+.panel-body { display: grid; grid-template-columns: 240px minmax(0, 1fr) 280px; gap: 22px; align-items: start; }
+.bag-title { margin: 0 0 8px; font-weight: 600; }
+.bag-title span { color: var(--bone-dim); font-variant-numeric: tabular-nums; }
+.equip-slots { display: grid; gap: 8px; }
+.equip-slot {
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  padding: 6px 10px 6px 6px;
+  border: 0;
+  text-align: left;
+  color: var(--bone);
+  background: rgba(235, 226, 201, .05);
+  box-shadow: inset 0 0 0 1px var(--line);
+  clip-path: var(--notch-sm);
+}
+.equip-slot small { display: block; font-size: var(--s-2); color: var(--bone-faint); }
+.equip-slot b { display: block; font-weight: 600; color: var(--rar, var(--bone-dim)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.equip-slot.selected, .tile.selected { box-shadow: inset 0 0 0 2px var(--verdigris); }
+.tile {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 100%;
+  aspect-ratio: 1;
+  padding: 0;
+  border: 0;
+  color: var(--rar, var(--bone-faint));
+  background: rgba(235, 226, 201, .04);
+  box-shadow: inset 0 0 0 1px var(--line);
+  clip-path: var(--notch-sm);
+}
+.equip-slot .tile { width: 52px; }
+.tile svg { width: 26px; height: 26px; }
+.tile.filled { background: rgba(235, 226, 201, .09); box-shadow: inset 0 0 0 1px var(--rar); }
+.tile .lv { position: absolute; right: 4px; bottom: 2px; font-size: .625rem; font-weight: 700; color: var(--bone); text-shadow: 0 1px 2px #000; }
+.bag-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
+.bag-hint { margin: 10px 0 0; font-size: var(--s-2); color: var(--bone-faint); }
+.stat-list { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; margin: 16px 0 0; font-size: var(--s-1); }
+.stat-list dt { color: var(--bone-dim); }
+.stat-list dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
+.item-card { padding: 14px 16px; background: rgba(235, 226, 201, .04); box-shadow: inset 0 0 0 1px var(--line); clip-path: var(--notch-sm); }
+.card-empty { margin: 0; color: var(--bone-faint); font-size: var(--s-1); }
+.card-name { margin: 0; font-family: var(--f-head); font-weight: 700; font-size: var(--s1); line-height: 1.3; color: var(--rar); }
+.card-meta { margin: 2px 0 10px; font-size: var(--s-2); color: var(--bone-dim); }
+.card-lines { list-style: none; margin: 0; padding: 0; display: grid; gap: 3px; font-size: var(--s-1); }
+.card-lines li { display: flex; justify-content: space-between; gap: 10px; }
+.card-lines li.main { font-weight: 600; }
+.card-lines .d { font-size: var(--s-2); }
+.up { color: #7fd06a; }
+.down { color: var(--ember); }
+.card-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.card-actions .btn { min-height: 40px; padding: 0 16px; font-size: var(--s-1); }
+@media (max-width: 900px) {
+  .panel-body { grid-template-columns: 1fr; gap: 16px; }
+  .panel-sheet { padding: 16px; }
+  .equip-slots { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .equip-slot { grid-template-columns: 40px minmax(0, 1fr); }
+  .equip-slot .tile { width: 40px; }
+  .stat-list { grid-template-columns: 1fr auto 1fr auto; }
+  .bag-grid { grid-template-columns: repeat(10, minmax(0, 1fr)); }
+}
+@media (max-width: 640px) { .bag-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); } .stat-list { grid-template-columns: 1fr auto; } }
+
 /* ---------- motion ---------- */
 @keyframes rise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
 @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
@@ -975,8 +1102,10 @@ kbd {
 .touch-on .toasts { top: 30%; }
 .touch-on .dialog { bottom: calc(var(--gutter) + 150px); width: min(520px, calc(100% - 32px)); padding: 12px 14px; gap: 12px; }
 .touch-on .dlg-text { font-size: var(--s0); }
+.touch-on .hud-inv { right: var(--gutter); bottom: auto; top: calc(var(--gutter) + 140px); min-height: 34px; padding: 0 10px; font-size: var(--s-2); }
+.touch-on .hud-inv kbd { display: none; }
 @media (orientation: portrait) {
-  .touch-on .hud-boss { top: calc(var(--gutter) + 150px); left: auto; right: var(--gutter); transform: none; width: min(200px, 44vw); }
+  .touch-on .hud-boss { top: calc(var(--gutter) + 184px); left: auto; right: var(--gutter); transform: none; width: min(200px, 44vw); }
 }
 
 /* landscape phones: keep the three-column class screen but compact, so the hunter stays visible */
