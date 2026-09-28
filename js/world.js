@@ -129,10 +129,17 @@
   var CELL = 8, grid = {};
   function cellKey(cx, cz) { return cx + ',' + cz; }
   function addCollider(x, z, r) {
-    var k = cellKey(Math.floor(x / CELL), Math.floor(z / CELL));
-    (grid[k] || (grid[k] = [])).push({ x: x, z: z, r: r });
+    var k = cellKey(Math.floor(x / CELL), Math.floor(z / CELL)), c = { x: x, z: z, r: r };
+    (grid[k] || (grid[k] = [])).push(c);
+    return c;
   }
   W.addCollider = addCollider;
+  W.removeCollider = function (c) {
+    var list = grid[cellKey(Math.floor(c.x / CELL), Math.floor(c.z / CELL))];
+    if (!list) return;
+    var i = list.indexOf(c);
+    if (i >= 0) list.splice(i, 1);
+  };
   W.collide = function (pos, radius) {
     var cx = Math.floor(pos.x / CELL), cz = Math.floor(pos.z / CELL);
     for (var i = -1; i <= 1; i++) for (var j = -1; j <= 1; j++) {
@@ -794,6 +801,27 @@
     H.part(H.cyl(0.9, 1.0, 7.5, 8), stoneM, ax + 3.6, ay + 3.7, az, g);
     H.part(H.box(9.6, 1.2, 2.2), darkM, ax, ay + 7.9, az, g);
     addCollider(ax - 3.6, az, 1.2); addCollider(ax + 3.6, az, 1.2);
+    /* thorn wall sealing the arch until the final bounty (game.js toggles it) */
+    var wallG = new T.Group();
+    g.add(wallG);
+    var wallM = H.mk(0x3b2a1e, { emissive: 0x6a2410, emissiveIntensity: 0.35 });
+    for (var wi = 0; wi < 9; wi++) {
+      var wx = ax - 3.0 + wi * 0.75, wh = 2.8 + Math.sin(wi * 1.7) * 0.8;
+      var th2 = H.part(H.cone(0.32, wh, 5), wallM, wx, ay + wh / 2 - 0.1, az + (wi % 2 ? 0.3 : -0.3), wallG);
+      th2.rotation.z = (wi - 4) * 0.08; th2.rotation.x = wi % 2 ? 0.15 : -0.15;
+    }
+    H.part(H.cyl(0.14, 0.14, 7.2, 6), wallM, ax, ay + 1.6, az, wallG).rotation.z = Math.PI / 2 + 0.12;
+    H.part(H.cyl(0.12, 0.12, 7.2, 6), wallM, ax, ay + 3.0, az + 0.2, wallG).rotation.z = Math.PI / 2 - 0.1;
+    var wallCol = null;
+    W.thornWall = {
+      group: wallG, x: ax, z: az, y: ay,
+      set: function (closed) {
+        wallG.visible = closed;
+        if (closed && !wallCol) wallCol = addCollider(ax, az, 3.4);
+        if (!closed && wallCol) { W.removeCollider(wallCol); wallCol = null; }
+      },
+    };
+    W.thornWall.set(true);
 
     /* the heart-root stump behind the arena */
     var sx = cx, sz = cz - 13, sy = heightAt(sx, sz);

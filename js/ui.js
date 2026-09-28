@@ -333,10 +333,13 @@
     setText('zone-lv', zn ? zn.lv : 'ไม่มีใครสำรวจ');
   };
 
-  UI.boss = function (show, ratio) {
+  UI.boss = function (show, ratio, latin, th) {
     var el = $('hud-boss');
     if (el.hidden === show) el.hidden = !show;
-    if (show) setW('boss-fill', ratio);
+    if (!show) return;
+    setW('boss-fill', ratio);
+    if (latin && last.bossLatin !== latin) { last.bossLatin = latin; $('boss-latin').textContent = latin; }
+    if (th && last.bossTh !== th) { last.bossTh = th; $('boss-th').textContent = th; }
   };
 
   UI.hurt = function () {
@@ -419,9 +422,9 @@
     for (var j = 0; j < monsters.length; j++) {
       var m = monsters[j];
       if (!m.alive) continue;
-      if (m.def.boss) {
-        ctx.fillStyle = '#e4683a';
-        ctx.beginPath(); ctx.arc(tx(m.pos.x), tz(m.pos.z), 3.2, 0, 6.283); ctx.fill();
+      if (m.def.boss || m.def.mini) {
+        ctx.fillStyle = m.def.boss ? '#e4683a' : '#ff9a3c';
+        ctx.beginPath(); ctx.arc(tx(m.pos.x), tz(m.pos.z), m.def.boss ? 3.2 : 2.6, 0, 6.283); ctx.fill();
         ctx.strokeStyle = '#ebe2c9'; ctx.lineWidth = 1; ctx.stroke();
       } else if (m.elite) {
         ctx.fillStyle = m.elite.color;

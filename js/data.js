@@ -101,16 +101,34 @@ TW.MONSTERS = {
     hp: 1300, atk: 26, def: 8, speed: 4.0, range: 5.0, aggro: 24, atkCd: 2.4, windup: 0.8,
     exp: 600, gold: [120, 160], radius: 2.6, height: 8.2, boss: true,
   },
+  /* Zone mini-bosses: a scaled base model with its own attack cycle and a summon at half health. */
+  alpha: {
+    th: 'ฟางเงา จ่าฝูง', latin: 'Shadowfang', rank: 'B', lv: 5, zone: 'ป่าสนเงา', base: 'wolf', mini: true, scale: 1.6,
+    hp: 420, atk: 20, def: 5, speed: 8.2, range: 2.6, aggro: 20, atkCd: 1.4, windup: 0.4,
+    exp: 180, gold: [30, 50], radius: 1.5, height: 3.2, pack: true, attacks: ['melee', 'melee', 'lunge'], summonAt: 0.5, summon: { type: 'wolf', n: 2 },
+  },
+  chief: {
+    th: 'กรัก หัวหน้าก็อบลิน', latin: 'Grukk', rank: 'B', lv: 6, zone: 'ค่ายโคลนก็อบลิน', base: 'goblin', mini: true, scale: 1.5,
+    hp: 520, atk: 24, def: 7, speed: 5.6, range: 3.4, aggro: 18, atkCd: 1.6, windup: 0.5,
+    exp: 240, gold: [40, 70], radius: 1.2, height: 3.2, attacks: ['melee', 'spear', 'melee', 'rally'],
+  },
+  mother: {
+    th: 'มารดาสปอร์', latin: 'Sporemother', rank: 'B', lv: 7, zone: 'หนองสปอร์', base: 'spore', mini: true, scale: 1.8,
+    hp: 600, atk: 22, def: 4, speed: 2.0, range: 15, aggro: 22, atkCd: 2.4, windup: 0.6,
+    exp: 300, gold: [50, 80], radius: 1.8, height: 4.9, ranged: true, attacks: ['spit', 'spit', 'cloud'], summonAt: 0.5, summon: { type: 'spore', n: 2 },
+  },
 };
+/* The final bounty index that wakes Old Thornheart (the thorn wall at the ruins opens at the same time). */
+TW.BOSS_UNLOCK_QUEST = 4;
 
 /* Map regions. x/z = centre (north is −z), r = radius in metres.
    flat = terrain levelling for built areas (lift raises or sinks it). */
 TW.ZONES = [
   { id: 'village', th: 'หมู่บ้านมอสเวล', lv: 'เขตปลอดภัย', x: 0, z: 150, r: 26, flat: { r: 36, lift: 0 }, safe: true, spawns: [] },
   { id: 'meadow', th: 'ทุ่งมอส', lv: 'Lv 1–2', x: 0, z: 82, r: 42, spawns: [{ type: 'slime', count: 12 }] },
-  { id: 'pines', th: 'ป่าสนเงา', lv: 'Lv 3–4', x: 100, z: 22, r: 46, spawns: [{ type: 'wolf', count: 9, pack: 3 }] },
-  { id: 'mud', th: 'ค่ายโคลนก็อบลิน', lv: 'Lv 4–5', x: -102, z: 28, r: 34, flat: { r: 30, lift: 0.5 }, spawns: [{ type: 'goblin', count: 9 }] },
-  { id: 'swamp', th: 'หนองสปอร์', lv: 'Lv 5–6', x: -82, z: -92, r: 44, flat: { r: 46, lift: -2.4 }, spawns: [{ type: 'spore', count: 7 }, { type: 'slime', count: 3 }] },
+  { id: 'pines', th: 'ป่าสนเงา', lv: 'Lv 3–4', x: 100, z: 22, r: 46, spawns: [{ type: 'wolf', count: 9, pack: 3 }, { type: 'alpha', count: 1, at: [114, 10] }] },
+  { id: 'mud', th: 'ค่ายโคลนก็อบลิน', lv: 'Lv 4–5', x: -102, z: 28, r: 34, flat: { r: 30, lift: 0.5 }, spawns: [{ type: 'goblin', count: 9 }, { type: 'chief', count: 1, at: [-104, 22] }] },
+  { id: 'swamp', th: 'หนองสปอร์', lv: 'Lv 5–6', x: -82, z: -92, r: 44, flat: { r: 46, lift: -2.4 }, spawns: [{ type: 'spore', count: 7 }, { type: 'slime', count: 3 }, { type: 'mother', count: 1, at: [-122, -76] }] },
   { id: 'ruins', th: 'ซากวิหารราก', lv: 'Lv 8 · บอส', x: 45, z: -132, r: 30, flat: { r: 30, lift: 1.2 }, spawns: [{ type: 'boss', count: 1, center: true }] },
 ];
 TW.ZONE_BY_ID = {};

@@ -53,7 +53,7 @@
   var VILLAGE = TW.ZONE_BY_ID.village;
   var SPAWN = { x: World.PREVIEW.x, z: World.PREVIEW.z };
 
-  var G = { mode: 'title', paused: false, time: 0, victoryShown: false, quest: { idx: 0, progress: 0, state: 'available' }, stats: { kills: 0, start: 0 }, cls: 'warrior', previewYaw: 0, zone: null, dialogOpen: false, panel: null, invSel: null, hitstop: 0, waystones: {}, dialogKind: '', panelTab: 'char', shopSel: null, smithSel: null };
+  var G = { mode: 'title', paused: false, time: 0, victoryShown: false, quest: { idx: 0, progress: 0, state: 'available' }, stats: { kills: 0, start: 0 }, cls: 'warrior', previewYaw: 0, zone: null, dialogOpen: false, panel: null, invSel: null, hitstop: 0, waystones: {}, dialogKind: '', panelTab: 'char', shopSel: null, smithSel: null, wallOpen: null };
   var cam = { yaw: 0, pitch: 0.95, dist: 22, shake: 0, target: new T.Vector3() };
   /* mouse: left = walk to the cursor, right = basic attack toward it, middle drag (or Q/E) = camera */
   var input = { keys: {}, ndc: new T.Vector2(), lDown: false, rDown: false, mDown: false, attackHold: false, lastX: 0, lastY: 0, joy: { x: 0, y: 0, on: false }, touch: false, drag: false, dragId: null, tapX: 0, tapY: 0, tapT: 0, tapMoved: 0 };
@@ -281,7 +281,7 @@
       inventory: [], equip: { weapon: null, armor: null, trinket: null }, bonus: TW.Items.bonus({}), dodgeCd: 0,
       attrs: { str: 0, vit: 0, agi: 0, int: 0 }, points: 0, cdr: 0, mpRegenBonus: 0,
       skills: { unlocked: {} }, skillPoints: 0, flags: {}, critMult: cls.critMult, lifesteal: 0, dodgeCdMax: TW.DODGE.cd,
-      materials: {},
+      materials: {}, dot: null,
     };
     p.pos.y = World.heightAt(p.pos.x, p.pos.z);
     recalc(p, true);
@@ -366,6 +366,11 @@
     p.potionCd = Math.max(0, p.potionCd - dt);
     p.dodgeCd = Math.max(0, p.dodgeCd - dt);
     p.invuln = Math.max(0, p.invuln - dt);
+    if (p.dot) {
+      p.dot.t -= dt; p.dot.acc += dt;
+      if (p.dot.acc >= 0.5) { p.dot.acc -= 0.5; damagePlayer(p.dot.dps * 0.5, null, true); }
+      if (p.dot.t <= 0 || p.dead) p.dot = null;
+    }
     for (var k in p.buffs) { p.buffs[k].t -= dt; if (p.buffs[k].t <= 0) endBuff(p, k); }
     var inVillage = dist2(p.pos, VILLAGE) < VILLAGE.r;
     var ooc = G.time - p.lastHurt > 5;
@@ -690,6 +695,14 @@
   function damageMonster(m, raw, opts) {
     if (!m.alive) return;
     opts = opts || {};
+    if (m.def.boss && bossSealed()) {
+      if (G.time - (m.sealMsg || -9) > 2.5) {
+        m.sealMsg = G.time;
+        UI.floater(m.pos.x, m.pos.y + m.def.height * 0.85, m.pos.z, 'หลับใหล', 'info');
+        UI.toast('', 'ธอร์นฮาร์ตยังหลับใหล', 'รับประกาศ "' + TW.QUESTS[TW.BOSS_UNLOCK_QUEST].title + '" จาก' + TW.NPC.name + 'ก่อน จึงจะปลุกมันได้', 'quiet');
+      }
+      return;
+    }
     var p = player, crit = opts.crit || Math.random() < p.crit, mult = 1;
     if (p.buffs.vanish) { crit = true; mult *= p.buffs.vanish.bonus; endBuff(p, 'vanish'); }
     var dmg = raw * rand(0.9, 1.1) * 40 / (40 + m.def.def) * mult;
@@ -709,6 +722,10 @@
     else if (p.flags.venomTouch && !opts.dot && Math.random() < 0.2) m.poison = { t: 3, dps: p.atk * 0.25, acc: 0, kind: 'poison' };
     if (opts.knock && !m.def.boss) { var dx = m.pos.x - p.pos.x, dz = m.pos.z - p.pos.z, l = Math.sqrt(dx * dx + dz * dz) || 1; m.knock = { x: dx / l * 9, z: dz / l * 9, t: 0.25 }; }
     aggro(m);
+    if (m.def.summon && !m.summoned && m.alive && m.hp > 0 && m.hp < m.maxHp * m.def.summonAt) {
+      summonMinions(m, m.def.summon.type, m.def.summon.n);
+      UI.toast('', m.def.th + 'เรียกพวก', '', 'quiet');
+    }
     if (m.def.boss && !m.enraged && m.hp < m.maxHp * 0.5) { m.enraged = true; UI.toast('', 'ธอร์นฮาร์ตคลั่ง', 'หัวใจของมันเต้นเร็วขึ้น โจมตีถี่ขึ้น และยิงหนามรอบตัว', 'quiet'); Particles.burst(m.pos.x, m.pos.y + 4.5, m.pos.z, 0xff6a2a, 80, 8, 1, 3, 3); }
     if (m.hp <= 0) killMonster(m);
   }
@@ -740,6 +757,13 @@
     shake(Math.min(0.5, dmg / p.maxHp * 2));
     if (p.hp <= 0) { p.hp = 0; playerDie(); }
   }
+  /* a damage-over-time on the hunter (spore cloud); the stronger of two overlapping ones wins */
+  function applyPlayerDot(t, dps) {
+    var p = player;
+    if (!p || p.dead) return;
+    if (!p.dot || p.dot.dps <= dps) p.dot = { t: t, dps: dps, acc: 0 };
+    else p.dot.t = Math.max(p.dot.t, t);
+  }
   function knockPlayer(from, force) {
     var p = player, dx = p.pos.x - from.x, dz = p.pos.z - from.z, l = Math.sqrt(dx * dx + dz * dz) || 1;
     p.knock = { x: dx / l * force, z: dz / l * force, t: 0.3 };
@@ -757,7 +781,7 @@
   function respawn() {
     var p = player;
     p.gold -= Math.floor(p.gold * 0.1);
-    p.dead = false; p.hp = p.maxHp; p.mp = p.maxMp;
+    p.dead = false; p.hp = p.maxHp; p.mp = p.maxMp; p.dot = null;
     p.pos.set(SPAWN.x, World.heightAt(SPAWN.x, SPAWN.z), SPAWN.z);
     p.facing = p.targetFacing = Math.PI;
     p.model.root.rotation.set(0, Math.PI, 0);
@@ -807,11 +831,12 @@
     if (m.aura) { scene.remove(m.aura); m.aura.material.dispose(); m.aura = null; }
     if (m.bar) m.bar.fg.material = BAR_FG;
     m.elite = null; m.eliteName = ''; m.def = m.baseDef; m.maxHp = m.baseDef.hp;
-    m.model.root.scale.setScalar(1);
+    m.model.root.scale.setScalar(m.baseDef.scale || 1);
   }
   function spawnMonster(type, zone, x, z, temp) {
     var def = TW.MONSTERS[type];
-    var model = Models.monster(type);
+    var model = Models.monster(def.base || type);
+    if (def.scale) model.root.scale.setScalar(def.scale);
     scene.add(model.root);
     var m = {
       type: type, def: def, baseDef: def, elite: null, aura: null, eliteName: '', temp: !!temp, summoned: false, gone: false,
@@ -821,13 +846,14 @@
       flash: 0, stun: 0, slow: null, poison: null, knock: null, anim: rand(0, 6), deathT: 0, respawn: 0, tint: '', pattern: 0, enraged: false, lunge: 0, lastHit: -99,
     };
     monsters.push(m);
-    if (!temp && !def.boss && Math.random() < TW.ELITE.chance) makeElite(m);
+    if (!temp && !def.boss && !def.mini && Math.random() < TW.ELITE.chance) makeElite(m);
     return m;
   }
   function populate() {
     TW.ZONES.forEach(function (zone) {
       (zone.spawns || []).forEach(function (sp) {
         if (sp.center) { for (var c = 0; c < sp.count; c++) spawnMonster(sp.type, zone, zone.x, zone.z); return; }
+        if (sp.at) { spawnMonster(sp.type, zone, sp.at[0], sp.at[1]); return; }
         var packs = sp.pack ? Math.ceil(sp.count / sp.pack) : sp.count, made = 0;
         for (var i = 0; i < packs && made < sp.count; i++) {
           var a = rand(0, TAU), r = rand(zone.r * 0.15, zone.r * 0.72);
@@ -846,27 +872,32 @@
   function resetMonsters() { monsters.forEach(function (m) { respawnMonster(m); }); }
   function respawnMonster(m) {
     clearElite(m);
-    if (!m.baseDef.boss && !m.temp && Math.random() < TW.ELITE.chance) makeElite(m);
+    if (!m.baseDef.boss && !m.baseDef.mini && !m.temp && Math.random() < TW.ELITE.chance) makeElite(m);
     m.alive = true; m.hp = m.maxHp; m.state = 'idle'; m.wanderT = rand(1, 4);
     m.pos.set(m.home.x, World.heightAt(m.home.x, m.home.z), m.home.z);
-    m.stun = 0; m.slow = null; m.poison = null; m.knock = null; m.enraged = false; m.pattern = 0; m.flash = 0; m.lunge = 0;
-    m.model.root.visible = true; m.model.root.scale.setScalar(m.elite ? TW.ELITE.scale : 1);
+    m.stun = 0; m.slow = null; m.poison = null; m.knock = null; m.enraged = false; m.pattern = 0; m.flash = 0; m.lunge = 0; m.summoned = false; m.rallyT = 0;
+    m.model.root.visible = true; m.model.root.scale.setScalar(m.elite ? TW.ELITE.scale : (m.def.scale || 1));
     if (m.aura) m.aura.visible = true;
     m.model.root.rotation.set(0, m.facing, 0);
     Models.tint(m.model, 0, 0); m.tint = '';
     if (m.bar) m.bar.g.visible = false;
   }
+  /* temporary minions around m (elite summoners, mini-bosses at half health) */
+  function summonMinions(m, type, n) {
+    m.summoned = true;
+    for (var k = 0; k < n; k++) {
+      var a = rand(0, TAU), mm = spawnMonster(type, m.zone, m.pos.x + Math.cos(a) * 2.5, m.pos.z + Math.sin(a) * 2.5, true);
+      mm.state = 'chase';
+      Particles.burst(mm.pos.x, mm.pos.y + 1, mm.pos.z, m.elite ? m.elite.hex : 0xff9a3c, 24, 3, 0.6, 0, 2);
+    }
+  }
   function aggro(m) {
-    if (!m.alive || m.state === 'chase' || m.state === 'windup' || !player || player.dead) return;
+    if (!m.alive || m.state === 'chase' || m.state === 'windup' || m.state === 'lunge' || !player || player.dead) return;
+    if (m.def.boss && bossSealed()) return;
     if (m.state === 'return' && m.hp < m.maxHp * 0.5) return;
     m.state = 'chase';
     if (m.elite && m.elite.minions && !m.summoned) {
-      m.summoned = true;
-      for (var k = 0; k < m.elite.minions; k++) {
-        var a = rand(0, TAU), mm = spawnMonster(m.type, m.zone, m.pos.x + Math.cos(a) * 2.5, m.pos.z + Math.sin(a) * 2.5, true);
-        mm.state = 'chase';
-        Particles.burst(mm.pos.x, mm.pos.y + 1, mm.pos.z, m.elite.hex, 24, 3, 0.6, 0, 2);
-      }
+      summonMinions(m, m.type, m.elite.minions);
       UI.toast('', m.eliteName + 'เรียกพวก', '', 'quiet');
     }
     if (m.def.pack) {
@@ -886,8 +917,14 @@
   }
   function faceTarget(m, t, dt) { m.facing = angLerp(m.facing, Math.atan2(t.x - m.pos.x, t.z - m.pos.z), Math.min(1, dt * 10)); }
 
-  var WINDUP = { smash: 0.85, slam: 1.25, rock: 0.75, nova: 1.0 };
+  var WINDUP = { smash: 0.85, slam: 1.25, rock: 0.75, nova: 1.0, lunge: 0.7, spear: 0.6, rally: 0.8, cloud: 1.0 };
   function chooseAttack(m, dp) {
+    if (m.def.mini) {
+      m.pattern = (m.pattern + 1) % m.def.attacks.length;
+      var k = m.def.attacks[m.pattern];
+      if (k === 'lunge' && dp < 4) k = 'melee';
+      return k;
+    }
     if (!m.def.boss) return m.def.ranged ? 'spit' : 'melee';
     if (dp > 9) return 'rock';
     var seq = m.enraged ? ['smash', 'slam', 'nova', 'smash'] : ['smash', 'smash', 'slam'];
@@ -905,6 +942,8 @@
     else if (m.attackKind === 'slam') { m.tele = { x: m.pos.x, z: m.pos.z, r: 9 }; telegraph(m.pos.x, m.pos.z, 9, m.windT, 0xe4683a); }
     else if (m.attackKind === 'nova') { telegraph(m.pos.x, m.pos.z, 5.5, m.windT, 0xd4a64a); }
     else if (m.attackKind === 'rock') { m.tele = { x: p.pos.x, z: p.pos.z, r: 3.4 }; telegraph(p.pos.x, p.pos.z, 3.4, m.windT + Math.max(0.3, dist2(m.pos, p.pos) / 22), 0xe4683a); }
+    else if (m.attackKind === 'lunge') { m.tele = { x: p.pos.x, z: p.pos.z, r: 2.8 }; telegraph(p.pos.x, p.pos.z, 2.8, m.windT + 0.45, 0xe4683a); }
+    else if (m.attackKind === 'cloud') { m.tele = { x: m.pos.x, z: m.pos.z, r: 6 }; telegraph(m.pos.x, m.pos.z, 6, m.windT, 0xb56fb0); }
   }
   function performAttack(m) {
     var p = player, def = m.def, kind = m.attackKind;
@@ -944,6 +983,28 @@
           } });
         m.lunge = 0.3;
         break;
+      case 'lunge':
+        /* dash to where the hunter stood when the wind-up began; resolved in the 'lunge' state */
+        m.state = 'lunge'; m.lungeT = 0; m.atkT = def.atkCd;
+        return;
+      case 'spear':
+        dx = p.pos.x - m.pos.x; dz = p.pos.z - m.pos.z; l = Math.sqrt(dx * dx + dz * dz) || 1;
+        spawnProj({ x: m.pos.x, z: m.pos.z, h: 1.8, dx: dx / l, dz: dz / l, speed: 26, range: 22, owner: 'monster', kind: 'thorn', radius: 0.6, dmg: def.atk * 1.2 });
+        m.lunge = 0.3;
+        break;
+      case 'rally':
+        for (var ri = 0; ri < monsters.length; ri++) {
+          var rm = monsters[ri];
+          if (rm.alive && rm !== m && rm.type === 'goblin' && dist2(rm.pos, m.pos) < 22) { rm.rallyT = 6; if (rm.state === 'idle' || rm.state === 'wander' || rm.state === 'return') rm.state = 'chase'; }
+        }
+        UI.toast('', def.th + 'สั่งการ', 'ก็อบลินรอบตัวรุมเข้ามาและวิ่งเร็วขึ้น', 'quiet');
+        Particles.burst(m.pos.x, m.pos.y + 2, m.pos.z, 0xf2d24b, 40, 5, 0.8, 0, 3);
+        break;
+      case 'cloud':
+        fxRing(m.pos.x, m.pos.y, m.pos.z, m.tele.r, 0xb56fb0, 0.7);
+        Particles.burst(m.pos.x, m.pos.y + 1.5, m.pos.z, 0xb56fb0, 90, 7, 1.2, 0, 2);
+        if (p && !p.dead && dp < m.tele.r + p.radius) { damagePlayer(def.atk * 0.6, m); applyPlayerDot(4, def.atk * 0.25); }
+        break;
       case 'nova':
         for (var i = 0; i < 14; i++) {
           var a = i / 14 * TAU;
@@ -957,7 +1018,7 @@
     m.atkT = def.atkCd * (m.enraged ? 0.7 : 1);
   }
   function killMonster(m) {
-    m.alive = false; m.state = 'dead'; m.deathT = 0; m.respawn = m.def.boss ? 120 : 24;
+    m.alive = false; m.state = 'dead'; m.deathT = 0; m.respawn = m.def.boss ? 120 : (m.def.mini ? 90 : 24);
     m.stun = 0; m.slow = null; m.poison = null;
     if (m.bar) m.bar.g.visible = false;
     if (m.aura) m.aura.visible = false;
@@ -979,9 +1040,9 @@
     var gold = Math.round(randi(m.def.gold[0], m.def.gold[1]) * (1 + player.bonus.goldPct / 100));
     player.gold += gold;
     maybeDropItem(m);
-    var matD = TW.MATERIALS.filter(function (x) { return x.from === m.type; })[0];
-    if (matD && (m.def.boss || Math.random() < TW.MATERIAL_DROP)) {
-      var mn = m.elite ? 2 : 1;
+    var matD = TW.MATERIALS.filter(function (x) { return x.from === (m.def.base || m.type); })[0];
+    if (matD && (m.def.boss || m.def.mini || Math.random() < TW.MATERIAL_DROP)) {
+      var mn = m.def.mini ? 3 : (m.elite ? 2 : 1);
       addMaterial(matD.id, mn);
       UI.floater(m.pos.x, m.pos.y + m.def.height * 0.5 + 0.7, m.pos.z, '+' + mn + ' ' + matD.th, 'item', matD.color);
     }
@@ -1012,7 +1073,7 @@
       m.deathT += dt;
       if (m.deathT < 0.7) {
         var k = 1 - m.deathT / 0.7;
-        md.root.scale.setScalar(Math.max(0.01, k) * (m.elite ? TW.ELITE.scale : 1));
+        md.root.scale.setScalar(Math.max(0.01, k) * (m.elite ? TW.ELITE.scale : (m.def.scale || 1)));
         md.root.position.y = m.pos.y - (1 - k) * 0.6;
       } else if (m.temp) {
         /* summoned minions never come back */
@@ -1030,6 +1091,7 @@
     if (far && m.state !== 'idle') m.state = m.state === 'wander' ? 'wander' : 'return';
 
     m.atkT = Math.max(0, m.atkT - dt);
+    if (m.rallyT > 0) m.rallyT -= dt;
     if (m.flash > 0) m.flash -= dt;
     if (m.lunge > 0) m.lunge -= dt;
     if (m.poison) {
@@ -1061,7 +1123,7 @@
       switch (m.state) {
         case 'idle':
           m.wanderT -= dt;
-          if (m.wanderT <= 0) { var a = rand(0, TAU), r = rand(2, def.boss ? 4 : 9); m.tx = m.home.x + Math.cos(a) * r; m.tz = m.home.z + Math.sin(a) * r; m.state = 'wander'; }
+          if (m.wanderT <= 0 && !(def.boss && bossSealed())) { var a = rand(0, TAU), r = rand(2, def.boss ? 4 : 9); m.tx = m.home.x + Math.cos(a) * r; m.tz = m.home.z + Math.sin(a) * r; m.state = 'wander'; }
           if (canSee && dp < def.aggro && !pInCamp) aggro(m);
           break;
         case 'wander':
@@ -1073,13 +1135,24 @@
           if (!canSee || pInCamp || dist2(m.pos, m.home) > (def.boss ? 34 : 52)) { m.state = 'return'; break; }
           if (dp <= reach && m.atkT <= 0) { startWindup(m, dp); break; }
           if (def.ranged && dp < def.range * 0.8) { faceTarget(m, p.pos, dt); if (m.atkT <= 0) startWindup(m, dp); }
-          else if (dp > reach * 0.85) { moving = true; moveToward(m, p.pos.x, p.pos.z, def.speed * slowF, dt); }
+          else if (dp > reach * 0.85) { moving = true; moveToward(m, p.pos.x, p.pos.z, def.speed * slowF * (m.rallyT > 0 ? 1.3 : 1), dt); }
           else faceTarget(m, p.pos, dt);
           break;
         case 'windup':
           m.windT -= dt * (def.boss ? 1 : slowF);
           if (!def.boss && canSee) faceTarget(m, p.pos, dt);
           if (m.windT <= 0) { if (canSee) performAttack(m); else m.state = 'return'; }
+          break;
+        case 'lunge':
+          moving = true;
+          m.lungeT += dt;
+          if (moveToward(m, m.tele.x, m.tele.z, 22, dt) || m.lungeT > 1.2) {
+            if (p && !p.dead && dist2(m.pos, p.pos) < m.tele.r + p.radius + 0.5) { damagePlayer(def.atk * 1.4, m); knockPlayer(m.pos, 10); }
+            Particles.burst(m.pos.x, m.pos.y + 0.4, m.pos.z, 0x8a7a5a, 30, 6, 0.7, 5, 2);
+            shake(0.3);
+            m.lunge = 0.3;
+            m.state = 'chase';
+          }
           break;
         case 'return':
           moving = true;
@@ -1114,19 +1187,44 @@
       }
     }
     if (def.boss) {
-      var engaged = m.state === 'chase' || m.state === 'windup';
-      UI.boss(engaged, m.hp / m.maxHp);
-      md.heart.material.emissiveIntensity = 2 + Math.sin(G.time * (m.enraged ? 9 : 4)) * 0.8;
-      md.light.intensity = 1.2 + Math.sin(G.time * (m.enraged ? 9 : 4)) * 0.5;
+      var asleep = bossSealed();
+      md.heart.material.emissiveIntensity = asleep ? 0.35 : 2 + Math.sin(G.time * (m.enraged ? 9 : 4)) * 0.8;
+      md.light.intensity = asleep ? 0.25 : 1.2 + Math.sin(G.time * (m.enraged ? 9 : 4)) * 0.5;
     }
   }
   function p_radius() { return player ? player.radius : 0.6; }
+  /* the top bar follows whichever boss or mini-boss is fighting the hunter, nearest first */
+  function updateBossBar() {
+    if (G.mode !== 'game' || !player) { UI.boss(false, 0); return; }
+    var best = null, bd = 1e9;
+    for (var i = 0; i < monsters.length; i++) {
+      var m = monsters[i];
+      if (!m.alive || !(m.def.boss || m.def.mini) || !(m.state === 'chase' || m.state === 'windup' || m.state === 'lunge')) continue;
+      var d = dist2(m.pos, player.pos);
+      if (d < bd) { bd = d; best = m; }
+    }
+    if (best) UI.boss(true, best.hp / best.maxHp, best.def.latin, best.def.th + ' · ภัยระดับ ' + best.def.rank);
+    else UI.boss(false, 0);
+  }
+  /* Old Thornheart sleeps (and the ruins arch is walled by thorns) until the final bounty is reached */
+  function bossSealed() { return G.quest.idx < TW.BOSS_UNLOCK_QUEST; }
+  function updateGate() {
+    var open = !bossSealed();
+    if (G.wallOpen === open) return;
+    G.wallOpen = open;
+    World.thornWall.set(!open);
+    if (open && G.mode === 'game') {
+      var w = World.thornWall;
+      Particles.burst(w.x, w.y + 2, w.z, 0xff9a3c, 80, 6, 1.2, 2, 3);
+      UI.toast('', 'รากหนามที่ซุ้มวิหารถอนตัวออกไป', 'ธอร์นฮาร์ตผู้เฒ่าตื่นแล้ว ระวังตัวเมื่อเข้าซากวิหาร', 'quiet');
+    }
+  }
 
   function animateMonster(m, dt, moving, slowF) {
     var md = m.model;
     m.anim += dt * (moving ? 1 : 0.35) * (slowF < 1 ? slowF + 0.15 : 1);
     var t = m.anim, w = m.state === 'windup' ? 1 - m.windT / m.windMax : 0, lunge = m.lunge > 0 ? Math.sin(m.lunge / 0.35 * Math.PI) : 0;
-    switch (m.type) {
+    switch (m.def.base || m.type) {
       case 'slime': {
         var hop = moving ? Math.abs(Math.sin(t * 6)) : Math.abs(Math.sin(t * 2)) * 0.15;
         md.body.position.y = hop * 0.7 + lunge * 0.5;
@@ -1424,6 +1522,8 @@
     ['pause', 'death', 'victory', 'howto'].forEach(function (id) { UI.overlay(id, false); });
     resetMonsters();
     World.pedestalRing.visible = false;
+    World.thornWall.set(true);
+    G.wallOpen = null;
     UI.showSave(loadSave());
     UI.screen('title');
   }
@@ -1507,6 +1607,7 @@
     var savedStones = restore && Array.isArray(restore.waystones) ? restore.waystones : [];
     World.waystones.forEach(function (w) { if (w.def.id === 'village' || savedStones.indexOf(w.def.id) >= 0) lightWaystone(w, true); });
     resetMonsters();
+    G.wallOpen = null;
     cam.yaw = 0; cam.shake = 0;
     cam.target.set(player.pos.x, player.pos.y + 1.4, player.pos.z);
     UI.setupHUD(player);
@@ -1552,9 +1653,9 @@
     if (item.rarity >= 3) UI.toast('', TW.Items.rarity(item).th + '!', item.name + ' ตกลงมา', 'quiet');
   }
   function maybeDropItem(m) {
-    var n = m.def.boss ? 2 : (Math.random() < TW.ITEM_DROP ? 1 : 0);
+    var n = (m.def.boss || m.def.mini) ? 2 : (Math.random() < TW.ITEM_DROP ? 1 : 0);
     for (var k = 0; k < n; k++) {
-      var item = TW.Items.roll(m.def.lv + (Math.random() < 0.5 ? 1 : 0), m.def.boss ? 2 : (m.elite ? 1 : 0));
+      var item = TW.Items.roll(m.def.lv + (Math.random() < 0.5 ? 1 : 0), m.def.boss ? 2 : (m.elite || m.def.mini ? 1 : 0));
       spawnItemPickup(item, m.pos.x + rand(-1.3, 1.3), m.pos.z + rand(-1.3, 1.3));
     }
   }
@@ -1596,11 +1697,11 @@
       }
       /* elites wear their name and affix over their heads */
       for (var e = 0; e < monsters.length && lootList.length < 6; e++) {
-        var em = monsters[e];
-        if (!em.alive || !em.elite || dist2(player.pos, em.pos) > 30) continue;
-        lootV.set(em.pos.x, em.pos.y + em.def.height * TW.ELITE.scale + 0.6, em.pos.z).project(camera);
+        var em = monsters[e], tag = em.elite ? em.eliteName : (em.def.mini ? em.def.th + ' · ภัยระดับ ' + em.def.rank : null);
+        if (!em.alive || !tag || dist2(player.pos, em.pos) > 34) continue;
+        lootV.set(em.pos.x, em.pos.y + em.def.height * (em.elite ? TW.ELITE.scale : 1) + 0.6, em.pos.z).project(camera);
         if (lootV.z > 1) continue;
-        lootList.push({ x: (lootV.x + 1) / 2 * window.innerWidth, y: (1 - lootV.y) / 2 * window.innerHeight, name: em.eliteName, color: em.elite.color });
+        lootList.push({ x: (lootV.x + 1) / 2 * window.innerWidth, y: (1 - lootV.y) / 2 * window.innerHeight, name: tag, color: em.elite ? em.elite.color : '#ff9a3c' });
       }
       for (var i = 0; i < pickups.length && lootList.length < 8; i++) {
         var pk = pickups[i];
@@ -2135,6 +2236,7 @@
       for (var gi = monsters.length - 1; gi >= 0; gi--) if (monsters[gi].gone) monsters.splice(gi, 1);
       separateMonsters();
       updateNpc(dt);
+      if (G.mode === 'game') { updateBossBar(); updateGate(); }
       updateProjectiles(dt);
       updateEffects(dt);
       Particles.update(dt);
