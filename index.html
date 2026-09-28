@@ -131,13 +131,15 @@
   <section class="panel" id="inv" hidden aria-label="กระเป๋าและอุปกรณ์">
     <div class="panel-sheet">
       <header class="panel-top">
-        <div><p class="eyebrow">สัมภาระนักล่า</p><h2>อุปกรณ์และกระเป๋า</h2></div>
+        <div><p class="eyebrow">ใบอนุญาตนักล่า</p><h2>ตัวละคร · อุปกรณ์ · กระเป๋า</h2></div>
         <button id="btn-inv-close" class="btn btn-ghost" type="button">ปิด <kbd>I</kbd></button>
       </header>
       <div class="panel-body">
         <div class="equip-col">
           <p class="bag-title">สวมใส่อยู่</p>
           <div class="equip-slots" id="equip-slots"></div>
+          <p class="bag-title attrs-title">แต้มคุณสมบัติ <span id="attr-points">เหลือ 0</span></p>
+          <div class="attrs" id="attrs"></div>
           <dl class="stat-list" id="stat-list"></dl>
         </div>
         <div class="bag-col">
@@ -162,7 +164,7 @@
         <dt><kbd>Shift</kbd></dt><dd>กลิ้งหลบไปทางที่กำลังเดิน อมตะระหว่างกลิ้ง (คูลดาวน์ 1.2 วิ) · อสูรจะเรืองแสงและมีวงแดงก่อนตี</dd>
         <dt><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></dt><dd>เดินด้วยคีย์บอร์ดก็ได้ (หรือปุ่มลูกศร)</dd>
         <dt><kbd>F</kbd></dt><dd>ดื่มยาฟื้นพลัง (ฟื้น 40% ของพลังชีวิต)</dd>
-        <dt><kbd>I</kbd></dt><dd>เปิดกระเป๋าและอุปกรณ์ · ของที่อสูรทิ้งจะเป็นลำแสงสีตามความหายาก เดินทับเพื่อเก็บ</dd>
+        <dt><kbd>I</kbd> / <kbd>C</kbd></dt><dd>หน้าตัวละคร: ลงแต้มคุณสมบัติ (3 แต้มต่อเลเวล) สวมอุปกรณ์ และกระเป๋า · ของที่อสูรทิ้งจะเป็นลำแสงสีตามความหายาก เดินทับเพื่อเก็บ</dd>
         <dt><kbd>Space</kbd></dt><dd>คุยกับหัวหน้ากิลด์ที่กระดานประกาศ เพื่อรับและส่งมอบประกาศล่า</dd>
         <dt>ลากเมาส์กลาง · <kbd>Q</kbd><kbd>E</kbd></dt><dd>หมุนกล้อง</dd>
         <dt>ล้อเมาส์</dt><dd>ซูมเข้า–ออก</dd>
@@ -189,7 +191,7 @@
         <dt><kbd>Shift</kbd></dt><dd>กลิ้งหลบ (อมตะระหว่างกลิ้ง)</dd>
         <dt><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></dt><dd>เดินด้วยคีย์บอร์ด</dd>
         <dt><kbd>F</kbd></dt><dd>ยาฟื้นพลัง</dd>
-        <dt><kbd>I</kbd></dt><dd>กระเป๋า/อุปกรณ์</dd>
+        <dt><kbd>I</kbd> / <kbd>C</kbd></dt><dd>ตัวละคร · แต้ม · อุปกรณ์ · กระเป๋า</dd>
         <dt><kbd>Space</kbd></dt><dd>คุยกับหัวหน้ากิลด์ รับ/ส่งประกาศ</dd>
         <dt>ลากเมาส์กลาง · <kbd>Q</kbd><kbd>E</kbd></dt><dd>หมุนกล้อง</dd>
       </dl>

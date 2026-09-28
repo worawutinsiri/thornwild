@@ -279,6 +279,7 @@
       cds: [0, 0, 0, 0], potionCd: 0, anim: { walk: 0, move: 0, act: null }, dash: null, hopY: 0, buffs: {}, lastHurt: -99, dead: false, deathT: 0,
       radius: 0.6, invuln: 0, knock: null, hurtFlash: 0,
       inventory: [], equip: { weapon: null, armor: null, trinket: null }, bonus: TW.Items.bonus({}), dodgeCd: 0,
+      attrs: { str: 0, vit: 0, agi: 0, int: 0 }, points: 0, cdr: 0, mpRegenBonus: 0,
     };
     p.pos.y = World.heightAt(p.pos.x, p.pos.z);
     recalc(p, true);
@@ -287,12 +288,16 @@
   /* class base + level growth + everything worn. fill = refill hp/mp (level up, respawn) */
   function recalc(p, fill) {
     var b = p.cls.base, g = p.cls.grow, L = p.level - 1, e = p.bonus = TW.Items.bonus(p.equip);
+    var a = { atk: 0, hp: 0, def: 0, crit: 0, speedPct: 0, mp: 0, cdr: 0, mpRegen: 0 };
+    TW.ATTRS.forEach(function (at) { var n = p.attrs[at.id] || 0; Object.keys(at.per).forEach(function (k) { a[k] += at.per[k] * n; }); });
     var oldMax = p.maxHp || 1, ratio = p.hp / oldMax;
-    p.maxHp = Math.round(b.hp + g.hp * L + e.hp); p.maxMp = Math.round(b.mp + g.mp * L);
-    p.atk = (b.atk + g.atk * L + e.atk) * (1 + e.atkPct / 100);
-    p.def = b.def + g.def * L + e.def;
-    p.crit = b.crit + e.crit / 100;
-    p.speed = b.speed * (1 + e.speedPct / 100);
+    p.maxHp = Math.round(b.hp + g.hp * L + e.hp + a.hp); p.maxMp = Math.round(b.mp + g.mp * L + a.mp);
+    p.atk = (b.atk + g.atk * L + e.atk + a.atk) * (1 + e.atkPct / 100);
+    p.def = b.def + g.def * L + e.def + a.def;
+    p.crit = b.crit + (e.crit + a.crit) / 100;
+    p.speed = b.speed * (1 + (e.speedPct + a.speedPct) / 100);
+    p.cdr = Math.min(40, e.cdr + a.cdr);
+    p.mpRegenBonus = e.mpRegen + a.mpRegen;
     if (fill) { p.hp = p.maxHp; p.mp = p.maxMp; }
     else { p.hp = Math.min(p.maxHp, Math.max(1, Math.round(ratio * p.maxHp))); p.mp = Math.min(p.mp, p.maxMp); }
   }
@@ -303,8 +308,10 @@
     while (p.exp >= TW.expToNext(p.level) && p.level < TW.MAX_LEVEL) {
       p.exp -= TW.expToNext(p.level);
       p.level++;
+      p.points += TW.POINTS_PER_LEVEL;
       recalc(p, true);
-      UI.toast('เลื่อนระดับ', 'Lv ' + p.level, 'พลังโจมตี ' + Math.round(p.atk) + ' · ป้องกัน ' + Math.round(p.def) + ' · พลังชีวิตและพลังเวทฟื้นเต็ม', 'level');
+      UI.setPoints(p.points);
+      UI.toast('เลื่อนระดับ', 'Lv ' + p.level, '+' + TW.POINTS_PER_LEVEL + ' แต้มคุณสมบัติ (กด I เพื่อลงแต้ม) · พลังชีวิตและพลังเวทฟื้นเต็ม', 'level');
       fxRing(p.pos.x, p.pos.y, p.pos.z, 4, 0xd4a64a, 0.7);
       Particles.burst(p.pos.x, p.pos.y + 1, p.pos.z, 0xd4a64a, 60, 6, 1.1, 4, 4);
     }
@@ -351,7 +358,7 @@
     var inVillage = dist2(p.pos, VILLAGE) < VILLAGE.r;
     var ooc = G.time - p.lastHurt > 5;
     p.hp = Math.min(p.maxHp, p.hp + p.maxHp * (inVillage ? 0.06 : (ooc ? 0.012 : 0)) * dt);
-    p.mp = Math.min(p.maxMp, p.mp + (p.cls.mpRegen + p.bonus.mpRegen + (inVillage ? p.maxMp * 0.05 : 0)) * dt);
+    p.mp = Math.min(p.maxMp, p.mp + (p.cls.mpRegen + p.mpRegenBonus + (inVillage ? p.maxMp * 0.05 : 0)) * dt);
     if (p.buffs.ironwill) p.hp = Math.min(p.maxHp, p.hp + p.maxHp * p.buffs.ironwill.heal / p.buffs.ironwill.dur * dt);
 
     /* movement relative to the camera */
@@ -588,7 +595,7 @@
     var ok = SKILLS[s.id](p, s, dir);
     if (ok === false) return;
     p.mp -= s.mp;
-    p.cds[i] = s.cd * (1 - p.bonus.cdr / 100);
+    p.cds[i] = s.cd * (1 - p.cdr / 100);
     p.moveTo = null;
   }
   function usePotion() {
@@ -1406,6 +1413,11 @@
       if (Array.isArray(restore.inventory)) player.inventory = restore.inventory.filter(TW.Items.valid).slice(0, TW.BAG_SIZE);
       if (restore.equip) TW.SLOTS.forEach(function (s) { var it = restore.equip[s.id]; player.equip[s.id] = TW.Items.valid(it) && it.slot === s.id ? it : null; });
       TW.Items.adoptUids(player.inventory.concat(TW.SLOTS.map(function (s) { return player.equip[s.id]; })));
+      /* attribute points: trust the save, but never let spent + unspent exceed what the level grants */
+      var budget = (player.level - 1) * TW.POINTS_PER_LEVEL, spent = 0;
+      TW.ATTRS.forEach(function (a) { var n = restore.attrs && restore.attrs[a.id] > 0 ? Math.floor(restore.attrs[a.id]) : 0; player.attrs[a.id] = n; spent += n; });
+      if (spent > budget) { TW.ATTRS.forEach(function (a) { player.attrs[a.id] = 0; }); spent = 0; }
+      player.points = Math.max(0, budget - spent);
       recalc(player, true);
       G.victoryShown = G.quest.idx >= TW.QUESTS.length;
       if (restore.x != null) { player.pos.set(restore.x, 0, restore.z); player.pos.y = World.heightAt(restore.x, restore.z); }
@@ -1415,6 +1427,7 @@
     cam.yaw = 0; cam.shake = 0;
     cam.target.set(player.pos.x, player.pos.y + 1.4, player.pos.z);
     UI.setupHUD(player);
+    UI.setPoints(player.points);
     refreshQuestHud();
     UI.zone(World.zoneAt(player.pos.x, player.pos.z));
     UI.screen('game');
@@ -1514,8 +1527,8 @@
       { label: 'พลังชีวิต', value: p.maxHp }, { label: 'พลังเวท', value: p.maxMp },
       { label: 'คริติคอล', value: Math.round(p.crit * 100) + '%' }, { label: 'ความเร็ว', value: p.speed.toFixed(1) + ' ม./วิ' },
     ];
-    if (e.cdr) out.push({ label: 'ลดคูลดาวน์', value: Math.round(e.cdr) + '%' });
-    if (e.mpRegen) out.push({ label: 'ฟื้นพลังเวทเพิ่ม', value: '+' + e.mpRegen.toFixed(1) + '/วิ' });
+    if (p.cdr) out.push({ label: 'ลดคูลดาวน์', value: Math.round(p.cdr) + '%' });
+    if (p.mpRegenBonus) out.push({ label: 'ฟื้นพลังเวทเพิ่ม', value: '+' + p.mpRegenBonus.toFixed(1) + '/วิ' });
     if (e.lifesteal) out.push({ label: 'ดูดเลือด', value: Math.round(e.lifesteal) + '%' });
     if (e.goldPct) out.push({ label: 'เหรียญที่ได้', value: '+' + Math.round(e.goldPct) + '%' });
     if (e.potionPct) out.push({ label: 'ประสิทธิภาพยา', value: '+' + Math.round(e.potionPct) + '%' });
@@ -1527,7 +1540,36 @@
     if (G.invSel && G.invSel.uid != null) { var i = findItem(G.invSel.uid); sel = i >= 0 ? p.inventory[i] : null; }
     else if (G.invSel && G.invSel.slot) { sel = p.equip[G.invSel.slot]; equipped = !!sel; }
     if (!sel) G.invSel = null;
-    UI.inventory(true, { equip: p.equip, items: p.inventory, stats: statLines(p), selected: sel, equipped: equipped, compare: sel ? p.equip[sel.slot] : null });
+    var cost = TW.RESPEC_COST * p.level, spent = 0;
+    TW.ATTRS.forEach(function (a) { spent += p.attrs[a.id] || 0; });
+    UI.inventory(true, {
+      equip: p.equip, items: p.inventory, stats: statLines(p), selected: sel, equipped: equipped, compare: sel ? p.equip[sel.slot] : null,
+      attrs: TW.ATTRS.map(function (a) { return { id: a.id, th: a.th, desc: a.desc, value: p.attrs[a.id] || 0 }; }),
+      points: p.points, respecCost: cost, canRespec: spent > 0 && p.gold >= cost,
+    });
+  }
+  function addAttr(id) {
+    var p = player;
+    if (!p || p.points <= 0 || !TW.ATTRS.some(function (a) { return a.id === id; })) return;
+    p.attrs[id] = (p.attrs[id] || 0) + 1;
+    p.points--;
+    recalc(p, false);
+    UI.setPoints(p.points);
+    renderInventory();
+    saveGame();
+  }
+  function respecAttrs() {
+    var p = player, cost = TW.RESPEC_COST * p.level, spent = 0;
+    TW.ATTRS.forEach(function (a) { spent += p.attrs[a.id] || 0; });
+    if (!spent || p.gold < cost) return;
+    p.gold -= cost;
+    p.points += spent;
+    TW.ATTRS.forEach(function (a) { p.attrs[a.id] = 0; });
+    recalc(p, false);
+    UI.setPoints(p.points);
+    UI.toast('', 'ล้างแต้มแล้ว', 'ได้แต้มคืน ' + spent + ' แต้ม', 'quiet');
+    renderInventory();
+    saveGame();
   }
   function toggleInventory(on) {
     if (G.mode !== 'game' || !player) return;
@@ -1624,7 +1666,7 @@
     if (e.repeat) return;
     if (G.mode === 'game') {
       if (e.code === 'Escape') { if (G.panel) { toggleInventory(false); return; } if (G.dialogOpen) { closeDialog(); return; } if (UI.anyOverlay() && !G.paused) return; togglePause(); }
-      if (e.code === 'KeyI') { toggleInventory(); return; }
+      if (e.code === 'KeyI' || e.code === 'KeyC') { toggleInventory(); return; }
       if (G.paused || G.panel || player.dead) return;
       if (e.code === 'Space') { if (G.dialogOpen) closeDialog(); else openDialog(); return; }
       if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') { dodge(); return; }
@@ -1723,7 +1765,13 @@
   UI.on('dodge', dodge);
   UI.on('inv-select', function (uid) { G.invSel = { uid: uid }; renderInventory(); });
   UI.on('inv-select-equip', function (slot) { G.invSel = { slot: slot }; renderInventory(); });
-  UI.on('inv-act', function (act, id) { if (act === 'equip') equipItem(id); else if (act === 'unequip') unequipItem(id); else if (act === 'drop') discardItem(id); });
+  UI.on('inv-act', function (act, id) {
+    if (act === 'equip') equipItem(id);
+    else if (act === 'unequip') unequipItem(id);
+    else if (act === 'drop') discardItem(id);
+    else if (act === 'attr') addAttr(id);
+    else if (act === 'respec') respecAttrs();
+  });
   UI.on('start', showClass);
   UI.on('back', showTitle);
   UI.on('continue-save', function () { var s = loadSave(); if (s) startGame(s.cls, s.name || TW.HUNTER_NAMES[0], s); });
@@ -1815,7 +1863,7 @@
   /* =============== boot =============== */
   function snapshot() {
     if (G.mode !== 'game' || !player) return {};
-    return { cls: player.cls.id, name: player.name, level: player.level, exp: player.exp, gold: player.gold, potions: player.potions, quest: G.quest, kills: G.stats.kills, x: player.pos.x, z: player.pos.z, elapsed: G.time - G.stats.start, inventory: player.inventory, equip: player.equip };
+    return { cls: player.cls.id, name: player.name, level: player.level, exp: player.exp, gold: player.gold, potions: player.potions, quest: G.quest, kills: G.stats.kills, x: player.pos.x, z: player.pos.z, elapsed: G.time - G.stats.start, inventory: player.inventory, equip: player.equip, attrs: player.attrs, points: player.points };
   }
   var autoT = 0;
   function debugAuto(dt) {

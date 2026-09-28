@@ -203,6 +203,17 @@ TW.STAT_LABELS = {
   mpRegen: { th: 'ฟื้นพลังเวท/วิ', dec: true }, lifesteal: { th: 'ดูดเลือด', pct: true }, goldPct: { th: 'เหรียญที่ได้', pct: true }, potionPct: { th: 'ประสิทธิภาพยา', pct: true },
 };
 TW.BAG_SIZE = 20;
+/* Attribute points: POINTS_PER_LEVEL each level-up, spent in the character panel.
+   per = what one point gives; RESPEC_COST × level in gold resets them. */
+TW.ATTRS = [
+  { id: 'str', th: 'พละกำลัง', desc: '+1.2 พลังโจมตี', per: { atk: 1.2 } },
+  { id: 'vit', th: 'ความอึด', desc: '+8 พลังชีวิต · +0.4 ป้องกัน', per: { hp: 8, def: 0.4 } },
+  { id: 'agi', th: 'ความคล่อง', desc: '+0.6% คริติคอล · +0.8% ความเร็ว', per: { crit: 0.6, speedPct: 0.8 } },
+  { id: 'int', th: 'ปัญญา', desc: '+6 พลังเวท · +0.5% ลดคูลดาวน์ · +0.12 ฟื้นเวท/วิ', per: { mp: 6, cdr: 0.5, mpRegen: 0.12 } },
+];
+TW.POINTS_PER_LEVEL = 3;
+TW.RESPEC_COST = 30;
+
 /* Universal dodge roll: distance, speed (m/s → ~0.35 s of i-frames), cooldown */
 TW.DODGE = { dist: 5.5, speed: 16, cd: 1.2 };
 

@@ -233,6 +233,14 @@ try {
       byId.get('inv').dispatch('click', { target: query(byId.get('equip-slots'), '[data-equip="' + it.slot + '"]')[0] }); frame(1, 'select worn');
       const unequipBtn = query(byId.get('item-card'), '[data-act="unequip"]')[0];
       expect(!!unequipBtn, 'selecting a worn item shows the unequip button');
+      /* attribute points: spend on strength, then buy them back */
+      p.points = 3; p.gold = 500; byId.get('inv').dispatch('click', { target: query(byId.get('equip-slots'), '[data-equip="' + it.slot + '"]')[0] }); frame(1, 'rerender');
+      const atkBeforePts = p.atk;
+      byId.get('inv').dispatch('click', { target: query(byId.get('attrs'), '[data-attr="str"]')[0] }); frame(1, 'spend');
+      expect(p.attrs.str === 1 && p.points === 2 && p.atk > atkBeforePts, 'a strength point raises attack and spends a point');
+      byId.get('inv').dispatch('click', { target: query(byId.get('attrs'), '[data-act="respec"]')[0] }); frame(1, 'respec');
+      expect(p.attrs.str === 0 && p.points === 3 && p.gold === 500 - sandbox.TW.RESPEC_COST * p.level, 'respec refunds points for gold');
+      expect(JSON.parse(store.get('tw.save.v1')).points === 3, 'points are saved');
       key('KeyI'); frame(2, 'close bag');
       expect(byId.get('inv').hidden && !G.state.panel, 'I closes the inventory');
       /* mouse: left click walks to the cursor, right click attacks */

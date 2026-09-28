@@ -125,7 +125,7 @@
     $('btn-inv-close').addEventListener('click', function () { emit('inventory', false); });
     $('inv').addEventListener('click', function (e) {
       var act = e.target.closest('[data-act]');
-      if (act) { emit('inv-act', act.dataset.act, act.dataset.uid ? +act.dataset.uid : act.dataset.slot); return; }
+      if (act) { if (act.disabled) return; emit('inv-act', act.dataset.act, act.dataset.uid ? +act.dataset.uid : (act.dataset.slot || act.dataset.attr)); return; }
       var tile = e.target.closest('[data-uid]');
       if (tile) { emit('inv-select', +tile.dataset.uid); return; }
       var eq = e.target.closest('[data-equip]');
@@ -528,6 +528,14 @@
     for (var j = list.length; j < lootEls.length; j++) lootEls[j].hidden = true;
   };
   UI.setBagNew = function (on) { $('btn-inv').classList.toggle('has-new', !!on); };
+  UI.setPoints = function (n) {
+    var b = $('btn-inv'), badge = b.querySelector('.pts');
+    if (n > 0) {
+      if (!badge) { badge = document.createElement('span'); badge.className = 'pts'; b.appendChild(badge); }
+      badge.textContent = '+' + n;
+      b.classList.add('has-new');
+    } else if (badge) { badge.remove(); b.classList.remove('has-new'); }
+  };
 
   /* ---------- inventory panel ----------
      view: { equip, items, stats:[{label,value}], selected: item|null, equipped: bool, compare: item|null } */
@@ -550,6 +558,14 @@
     $('stat-list').innerHTML = h;
     var dts = $('stat-list').querySelectorAll('dt'), dds = $('stat-list').querySelectorAll('dd');
     v.stats.forEach(function (s, i) { dts[i].textContent = s.label; dds[i].textContent = s.value; });
+    $('attr-points').textContent = 'เหลือ ' + v.points;
+    h = '';
+    v.attrs.forEach(function (a) {
+      h += '<div class="attr"><span><b>' + a.th + '</b><small>' + a.desc + '</small></span><span class="val">' + a.value + '</span>' +
+        '<button type="button" class="plus" data-act="attr" data-attr="' + a.id + '" aria-label="เพิ่ม' + a.th + '"' + (v.points > 0 ? '' : ' disabled') + '>+</button></div>';
+    });
+    h += '<div class="respec"><span>ล้างแต้มทั้งหมด ' + v.respecCost + ' เหรียญ</span><button type="button" class="btn btn-ghost" data-act="respec"' + (v.canRespec ? '' : ' disabled') + '>ล้างแต้ม</button></div>';
+    $('attrs').innerHTML = h;
     h = '';
     for (var i = 0; i < TW.BAG_SIZE; i++) {
       var it2 = v.items[i];
