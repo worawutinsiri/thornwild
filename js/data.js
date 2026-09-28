@@ -214,6 +214,16 @@ TW.ATTRS = [
 TW.POINTS_PER_LEVEL = 3;
 TW.RESPEC_COST = 30;
 
+/* Waystones: one per zone. Walking within 2.6 m wakes a stone; at any lit stone, Space lists the others. */
+TW.WAYSTONES = [
+  { id: 'village', zone: 'village', th: 'หินเวทมอสเวล', x: 8, z: 140 },
+  { id: 'meadow', zone: 'meadow', th: 'หินเวททุ่งมอส', x: 10, z: 70 },
+  { id: 'pines', zone: 'pines', th: 'หินเวทป่าสนเงา', x: 92, z: 34 },
+  { id: 'mud', zone: 'mud', th: 'หินเวทค่ายโคลน', x: -100, z: 54 },
+  { id: 'swamp', zone: 'swamp', th: 'หินเวทหนองสปอร์', x: -44, z: -66 },
+  { id: 'ruins', zone: 'ruins', th: 'หินเวทซากวิหาร', x: 54, z: -108 },
+];
+
 /* Universal dodge roll: distance, speed (m/s → ~0.35 s of i-frames), cooldown */
 TW.DODGE = { dist: 5.5, speed: 16, cd: 1.2 };
 

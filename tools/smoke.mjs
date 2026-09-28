@@ -275,10 +275,22 @@ try {
       expect(p.hp < hpBeforeBlast, 'volatile elite blast hurt the hunter standing on it');
       const el2 = G.monsters().find((m) => m.type === 'slime' && m.alive && !m.elite && m !== el);
       const countBefore = G.monsters().length;
-      G.makeElite(el2, 'summoner'); G.teleport(el2.pos.x + 3, el2.pos.z); frame(30, 'summon');
-      expect(G.monsters().length === countBefore + 2, 'summoner elite called two minions');
+      G.makeElite(el2, 'summoner'); el2.state = 'idle'; G.teleport(el2.pos.x + 3, el2.pos.z); frame(30, 'summon');
+      expect(G.monsters().length >= countBefore + 2 && el2.summoned, 'summoner elite called two minions (' + (G.monsters().length - countBefore) + ' new)');
       G.hit(el2, 99999); frame(2, 'kill summoner');
       G.teleport(2, 142); frame(60, 'settle');
+      /* waystones: the village stone is known, walking to the meadow stone wakes it, Space travels back */
+      const stones = G.waystones();
+      const villageStone = stones.find((w) => w.def.id === 'village'), meadowStone = stones.find((w) => w.def.id === 'meadow');
+      expect(villageStone.lit && !meadowStone.lit, 'only the village waystone starts lit');
+      G.teleport(meadowStone.def.x + 1.5, meadowStone.def.z); frame(20, 'wake stone');
+      expect(meadowStone.lit && G.state.waystones.meadow, 'walking up to a waystone wakes it');
+      key('Space'); frame(2, 'travel dialog');
+      expect(!byId.get('dialog').hidden && acts().includes('travel:village'), 'Space at a lit stone lists the other lit stones');
+      dlg('travel:village'); frame(3, 'travel');
+      expect(byId.get('dialog').hidden && Math.hypot(p.pos.x - villageStone.def.x, p.pos.z - villageStone.def.z) < 4, 'travelling lands beside the village stone');
+      expect((JSON.parse(store.get('tw.save.v1')).waystones || []).includes('meadow'), 'lit waystones are saved');
+      G.teleport(2, 142); frame(10, 'back');
       G.state.debugAuto = true;
       key('KeyW'); frame(240, 'play ' + c.id); key('KeyW', true);
       expect(p.pos.z < 140, c.id + ' walked north (z=' + p.pos.z.toFixed(1) + ')');

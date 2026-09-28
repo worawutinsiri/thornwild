@@ -53,7 +53,7 @@
   var VILLAGE = TW.ZONE_BY_ID.village;
   var SPAWN = { x: World.PREVIEW.x, z: World.PREVIEW.z };
 
-  var G = { mode: 'title', paused: false, time: 0, victoryShown: false, quest: { idx: 0, progress: 0, state: 'available' }, stats: { kills: 0, start: 0 }, cls: 'warrior', previewYaw: 0, zone: null, dialogOpen: false, panel: null, invSel: null, hitstop: 0 };
+  var G = { mode: 'title', paused: false, time: 0, victoryShown: false, quest: { idx: 0, progress: 0, state: 'available' }, stats: { kills: 0, start: 0 }, cls: 'warrior', previewYaw: 0, zone: null, dialogOpen: false, panel: null, invSel: null, hitstop: 0, waystones: {}, dialogKind: '' };
   var cam = { yaw: 0, pitch: 0.95, dist: 22, shake: 0, target: new T.Vector3() };
   /* mouse: left = walk to the cursor, right = basic attack toward it, middle drag (or Q/E) = camera */
   var input = { keys: {}, ndc: new T.Vector2(), lDown: false, rDown: false, mDown: false, attackHold: false, lastX: 0, lastY: 0, joy: { x: 0, y: 0, on: false }, touch: false, drag: false, dragId: null, tapX: 0, tapY: 0, tapT: 0, tapMoved: 0 };
@@ -372,7 +372,7 @@
     if (len > 0.08) p.moveTo = null;
     else if (p.moveTo && !p.dash) {
       var tdx = p.moveTo.x - p.pos.x, tdz = p.moveTo.z - p.pos.z, td = Math.sqrt(tdx * tdx + tdz * tdz);
-      if (td < 0.45) { var talk = p.moveTo.talk; p.moveTo = null; if (talk && npcInRange()) openDialog(); }
+      if (td < 0.45) { var talk = p.moveTo.talk, travel = p.moveTo.travel; p.moveTo = null; if (talk && npcInRange()) openDialog(); else if (travel) openTravel(); }
       else {
         if (td < p.moveTo.best - 0.02) { p.moveTo.best = td; p.moveTo.stuckT = 0; }
         else { p.moveTo.stuckT += dt; if (p.moveTo.stuckT > 0.6) p.moveTo = null; }
@@ -1275,8 +1275,9 @@
     player.moveTo = null;
     UI.dialog(true, dialogData());
   }
-  function closeDialog() { G.dialogOpen = false; UI.dialog(false); }
+  function closeDialog() { G.dialogOpen = false; G.dialogKind = ''; UI.dialog(false); }
   function dialogAction(act) {
+    if (act.indexOf('travel:') === 0) { travelTo(act.slice(7)); return; }
     if (act === 'accept') { acceptQuest(); UI.dialog(true, dialogData()); }
     else if (act === 'turnin') { turnInQuest(); UI.dialog(true, dialogData()); }
     else closeDialog();
@@ -1423,6 +1424,12 @@
       if (restore.x != null) { player.pos.set(restore.x, 0, restore.z); player.pos.y = World.heightAt(restore.x, restore.z); }
     }
     G.token = (restore && restore.token) || newToken();
+    clearPickups();
+    /* waystones: the village stone is always known; the rest come back from the save */
+    G.waystones = {};
+    World.waystones.forEach(function (w) { w.set(false); });
+    var savedStones = restore && Array.isArray(restore.waystones) ? restore.waystones : [];
+    World.waystones.forEach(function (w) { if (w.def.id === 'village' || savedStones.indexOf(w.def.id) >= 0) lightWaystone(w, true); });
     resetMonsters();
     cam.yaw = 0; cam.shake = 0;
     cam.target.set(player.pos.x, player.pos.y + 1.4, player.pos.z);
@@ -1501,6 +1508,16 @@
   function updateLootLabels() {
     lootList.length = 0;
     if (G.mode === 'game' && player) {
+      /* waystones show their name; a lit one nearby also shows the travel key */
+      var nearW = nearWaystone();
+      for (var wi = 0; wi < World.waystones.length && lootList.length < 4; wi++) {
+        var ws = World.waystones[wi];
+        if (dist2(player.pos, ws.def) > 34) continue;
+        lootV.set(ws.def.x, ws.group.position.y + 4.9, ws.def.z).project(camera);
+        if (lootV.z > 1) continue;
+        var tag = ws.lit ? ws.def.th + (ws === nearW ? (input.touch ? ' · แตะเพื่อเดินทาง' : ' · Space เดินทาง') : '') : ws.def.th + ' · ยังไม่ปลุก';
+        lootList.push({ x: (lootV.x + 1) / 2 * window.innerWidth, y: (1 - lootV.y) / 2 * window.innerHeight, name: tag, color: ws.lit ? '#6cc2ab' : '#86836f' });
+      }
       /* elites wear their name and affix over their heads */
       for (var e = 0; e < monsters.length && lootList.length < 6; e++) {
         var em = monsters[e];
@@ -1612,6 +1629,63 @@
     saveGame();
   }
 
+  /* =============== waystones (fast travel) =============== */
+  var wayT = 0;
+  function nearWaystone() {
+    var p = player, best = null, bd = 2.6;
+    if (!p) return null;
+    for (var i = 0; i < World.waystones.length; i++) { var d = dist2(p.pos, World.waystones[i].def); if (d < bd) { bd = d; best = World.waystones[i]; } }
+    return best;
+  }
+  function lightWaystone(w, quiet) {
+    if (w.lit) return;
+    w.set(true);
+    G.waystones[w.def.id] = true;
+    if (!quiet) {
+      UI.toast('ปลุกหินเวทแล้ว', w.def.th, 'ยืนใกล้หินเวทที่ปลุกแล้วกด Space เพื่อเดินทางไปหินก้อนอื่น', 'quiet');
+      Particles.burst(w.def.x, w.group.position.y + 2, w.def.z, 0x6cc2ab, 60, 5, 1, 0, 3);
+      saveGame();
+    }
+  }
+  function updateWaystones(dt) {
+    wayT -= dt;
+    if (wayT > 0 || !player || player.dead) return;
+    wayT = 0.25;
+    var w = nearWaystone();
+    if (w && !w.lit) lightWaystone(w);
+  }
+  function openTravel() {
+    var w = nearWaystone();
+    if (!w || !w.lit || G.mode !== 'game' || G.paused || G.panel) return;
+    var dests = World.waystones.filter(function (o) { return o.lit && o !== w; });
+    var buttons = dests.map(function (o) { return { act: 'travel:' + o.def.id, label: o.def.th.replace('หินเวท', '') }; });
+    buttons.push({ act: 'close', label: 'ปิด' });
+    G.dialogOpen = true; G.dialogKind = 'travel';
+    input.rDown = false; input.lDown = false; input.attackHold = false;
+    player.moveTo = null;
+    UI.dialog(true, {
+      name: w.def.th, title: 'หินเวท · เดินทางด่วน',
+      text: dests.length ? 'เลือกหินเวทปลายทางที่เคยปลุกไว้' : 'ยังไม่มีหินเวทก้อนอื่นที่ปลุกไว้ ออกสำรวจให้เจอหินก้อนถัดไปก่อน',
+      buttons: buttons,
+    });
+  }
+  function travelTo(id) {
+    var w = World.waystones.filter(function (o) { return o.def.id === id && o.lit; })[0], p = player;
+    if (!w || !p) return;
+    Particles.burst(p.pos.x, p.pos.y + 1, p.pos.z, 0x6cc2ab, 40, 4, 0.7, 0, 2);
+    UI.flash('#6cc2ab');
+    p.pos.set(w.def.x, 0, w.def.z + 2.6);
+    p.pos.y = World.heightAt(p.pos.x, p.pos.z);
+    p.moveTo = null; p.dash = null; p.knock = null;
+    p.facing = p.targetFacing = Math.PI;
+    cam.target.set(p.pos.x, p.pos.y + 1.4, p.pos.z);
+    Particles.burst(p.pos.x, p.pos.y + 1, p.pos.z, 0x6cc2ab, 40, 4, 0.7, 0, 2);
+    closeDialog();
+    for (var i = 0; i < monsters.length; i++) if (monsters[i].state === 'chase' || monsters[i].state === 'windup') monsters[i].state = 'return';
+    UI.toast('', w.def.th, 'เดินทางถึงแล้ว', 'quiet');
+    saveGame();
+  }
+
   /* ---- click-to-move ---- */
   var gpV = new T.Vector3();
   /* March the cursor ray against the height field until it dips under the terrain. */
@@ -1650,6 +1724,19 @@
         return;
       }
     }
+    if (fresh) {
+      ray.setFromCamera(input.ndc, camera);
+      for (var wi = 0; wi < World.waystones.length; wi++) {
+        var ws = World.waystones[wi];
+        if (!ray.intersectObject(ws.group, true).length) continue;
+        var near = nearWaystone();
+        if (near === ws && ws.lit) { p.moveTo = null; if (!G.dialogOpen) openTravel(); return; }
+        var wdx = ws.def.x - p.pos.x, wdz = ws.def.z - p.pos.z, wl = Math.sqrt(wdx * wdx + wdz * wdz) || 1;
+        p.moveTo = { x: ws.def.x - wdx / wl * 2.0, z: ws.def.z - wdz / wl * 2.0, travel: true, best: 1e9, stuckT: 0 };
+        fxRing(ws.def.x, ws.group.position.y, ws.def.z, 1.6, 0x6cc2ab, 0.45);
+        return;
+      }
+    }
     var g = groundPoint(input.ndc);
     if (!g) return;
     p.moveTo = { x: g.x, z: g.z, talk: false, best: 1e9, stuckT: 0 };
@@ -1668,7 +1755,7 @@
       if (e.code === 'Escape') { if (G.panel) { toggleInventory(false); return; } if (G.dialogOpen) { closeDialog(); return; } if (UI.anyOverlay() && !G.paused) return; togglePause(); }
       if (e.code === 'KeyI' || e.code === 'KeyC') { toggleInventory(); return; }
       if (G.paused || G.panel || player.dead) return;
-      if (e.code === 'Space') { if (G.dialogOpen) closeDialog(); else openDialog(); return; }
+      if (e.code === 'Space') { if (G.dialogOpen) closeDialog(); else if (npcInRange()) openDialog(); else openTravel(); return; }
       if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') { dodge(); return; }
       if (e.code === 'Digit1') useSkill(1);
       else if (e.code === 'Digit2') useSkill(2);
@@ -1827,8 +1914,9 @@
         updatePlayer(dt);
         updateZonesFx(dt);
         updatePickups(dt);
+        updateWaystones(dt);
         if (!player.dead) { updateQuestNav(dt); updateZone(dt); }
-        if (G.dialogOpen && !npcInRange()) closeDialog();
+        if (G.dialogOpen && (G.dialogKind === 'travel' ? !nearWaystone() : !npcInRange())) closeDialog();
         saveT += dt;
         if (saveT >= 10) { saveT = 0; saveGame(); }
       }
@@ -1854,7 +1942,13 @@
     if (G.mode === 'game') {
       UI.hud(player, { active: player.buffs });
       hudT -= dt;
-      if (hudT <= 0) { hudT = 0.08; UI.minimap(player, monsters, TW.QUESTS[G.quest.idx] ? TW.ZONE_BY_ID[TW.QUESTS[G.quest.idx].zone] : null, G.time); }
+      if (hudT <= 0) {
+        hudT = 0.08;
+        var marks = [];
+        for (var wi = 0; wi < World.waystones.length; wi++) if (World.waystones[wi].lit) marks.push({ x: World.waystones[wi].def.x, z: World.waystones[wi].def.z, color: '#6cc2ab', shape: 'diamond' });
+        for (var pi = 0; pi < pickups.length; pi++) marks.push({ x: pickups[pi].x, z: pickups[pi].z, color: TW.Items.rarity(pickups[pi].item).color });
+        UI.minimap(player, monsters, TW.QUESTS[G.quest.idx] ? TW.ZONE_BY_ID[TW.QUESTS[G.quest.idx].zone] : null, G.time, marks);
+      }
     }
     UI.updateFloaters(camera, dt, window.innerWidth, window.innerHeight);
     renderer.render(scene, camera);
@@ -1863,7 +1957,7 @@
   /* =============== boot =============== */
   function snapshot() {
     if (G.mode !== 'game' || !player) return {};
-    return { cls: player.cls.id, name: player.name, level: player.level, exp: player.exp, gold: player.gold, potions: player.potions, quest: G.quest, kills: G.stats.kills, x: player.pos.x, z: player.pos.z, elapsed: G.time - G.stats.start, inventory: player.inventory, equip: player.equip, attrs: player.attrs, points: player.points };
+    return { cls: player.cls.id, name: player.name, level: player.level, exp: player.exp, gold: player.gold, potions: player.potions, quest: G.quest, kills: G.stats.kills, x: player.pos.x, z: player.pos.z, elapsed: G.time - G.stats.start, inventory: player.inventory, equip: player.equip, attrs: player.attrs, points: player.points, waystones: Object.keys(G.waystones) };
   }
   var autoT = 0;
   function debugAuto(dt) {
@@ -1908,6 +2002,9 @@
     dodge: dodge,
     makeElite: function (m, affixId) { clearElite(m); makeElite(m, affixId); m.hp = m.maxHp; },
     hit: function (m, amount) { damageMonster(m, amount, {}); },
+    waystones: function () { return World.waystones; },
+    openTravel: openTravel,
+    travelTo: travelTo,
     forceQuestComplete: function () { var q = TW.QUESTS[G.quest.idx]; if (q && G.quest.state === 'active') { G.quest.progress = q.count - 1; questProgress(q.target); } },
     forceDeath: function () { if (player && !player.dead) { player.hp = 0; playerDie(); } },
     forceBossKill: function () { for (var i = 0; i < monsters.length; i++) if (monsters[i].def.boss && monsters[i].alive) { monsters[i].hp = 0; killMonster(monsters[i]); } },

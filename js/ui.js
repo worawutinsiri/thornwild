@@ -330,6 +330,14 @@
     el.classList.add('on');
     setTimeout(function () { el.classList.remove('on'); }, 70);
   };
+  UI.flash = function (color) {
+    var el = $('flash');
+    el.style.setProperty('--flash', color || '#6cc2ab');
+    el.classList.remove('on');
+    void el.offsetWidth;
+    el.classList.add('on');
+    setTimeout(function () { el.classList.remove('on'); }, 1000);
+  };
 
   /* ---------- toasts ---------- */
   UI.toast = function (eyebrow, title, sub, kind) {
@@ -375,7 +383,7 @@
   /* ---------- minimap ---------- */
   var mm = { base: null, ctx: null, extent: 200, size: 176 };
   UI.initMinimap = function (image, extent) { mm.base = image; mm.extent = extent; mm.ctx = $('minimap').getContext('2d'); };
-  UI.minimap = function (p, monsters, questZone, time) {
+  UI.minimap = function (p, monsters, questZone, time, extras) {
     var ctx = mm.ctx, S = mm.size, k = S / (mm.extent * 2);
     var tx = function (x) { return (x + mm.extent) * k; }, tz = function (z) { return (z + mm.extent) * k; };
     ctx.clearRect(0, 0, S, S);
@@ -407,6 +415,14 @@
       } else {
         ctx.fillStyle = m.state === 'chase' || m.state === 'windup' ? '#ff7a4a' : 'rgba(228,104,58,0.75)';
         ctx.fillRect(tx(m.pos.x) - 1.3, tz(m.pos.z) - 1.3, 2.6, 2.6);
+      }
+    }
+    if (extras) {
+      for (var e = 0; e < extras.length; e++) {
+        var ex = extras[e];
+        ctx.fillStyle = ex.color;
+        if (ex.shape === 'diamond') { ctx.save(); ctx.translate(tx(ex.x), tz(ex.z)); ctx.rotate(Math.PI / 4); ctx.fillRect(-2.6, -2.6, 5.2, 5.2); ctx.restore(); }
+        else { ctx.beginPath(); ctx.arc(tx(ex.x), tz(ex.z), 2.6 + Math.sin(time * 5) * 0.8, 0, 6.283); ctx.fill(); }
       }
     }
     if (p) {

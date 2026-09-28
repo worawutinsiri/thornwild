@@ -227,6 +227,7 @@
     buildMudCamp(scene);
     buildSwamp(scene, anim);
     buildRuins(scene, anim);
+    buildWaystones(scene, anim);
 
     var focus = new T.Vector3();
     return {
@@ -796,6 +797,43 @@
       th.rotation.set(Math.sin(ta) * 0.5, 0, -Math.cos(ta) * 0.5);
     }
     addCollider(sx, sz, 5.0);
+  }
+
+  /* ---------- waystones: standing stones that light up once found ---------- */
+  function buildWaystones(scene, anim) {
+    W.waystones = [];
+    TW.WAYSTONES.forEach(function (d) {
+      var y = heightAt(d.x, d.z);
+      var g = new T.Group();
+      g.position.set(d.x, y - 0.1, d.z);
+      g.rotation.y = rnd() * 6.28;
+      scene.add(g);
+      H.part(H.cyl(1.3, 1.5, 0.3, 8), H.mk(0x8a8676), 0, 0.15, 0, g);
+      H.part(H.cyl(0.32, 0.6, 3.4, 5), H.mk(0x6f6a5e), 0, 2.0, 0, g);
+      var crystalM = H.glow(0x6cc2ab, 0); crystalM.color.setHex(0x35574f);
+      var crystal = H.part(H.ico(0.34, 0), crystalM, 0, 3.98, 0, g);
+      var runeM = H.glow(0x6cc2ab, 0); runeM.color.setHex(0x2f4a44);
+      for (var i = 0; i < 3; i++) H.part(H.box(0.12, 0.36, 0.06), runeM, 0, 1.3 + i * 0.62, 0.52 - i * 0.05, g);
+      var ringM = new T.MeshBasicMaterial({ color: 0x6cc2ab, transparent: true, opacity: 0, blending: T.AdditiveBlending, depthWrite: false, side: T.DoubleSide });
+      var ring = new T.Mesh(new T.RingGeometry(1.6, 1.85, 40), ringM);
+      ring.rotation.x = -Math.PI / 2;
+      ring.position.y = 0.36;
+      g.add(ring);
+      addCollider(d.x, d.z, 1.0);
+      W.waystones.push({
+        def: d, group: g, ring: ring, crystal: crystal, lit: false,
+        set: function (on) { this.lit = on; crystalM.emissiveIntensity = on ? 1.6 : 0; runeM.emissiveIntensity = on ? 1.2 : 0; ringM.opacity = on ? 0.55 : 0; },
+      });
+    });
+    anim.push(function (dt, t) {
+      for (var i = 0; i < W.waystones.length; i++) {
+        var w = W.waystones[i];
+        if (!w.lit) continue;
+        w.ring.rotation.z += dt * 0.6;
+        w.crystal.rotation.y += dt * 0.8;
+        w.crystal.position.y = 3.98 + Math.sin(t * 1.5 + i) * 0.12;
+      }
+    });
   }
 
   /* ---------- minimap base image ---------- */

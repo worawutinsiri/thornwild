@@ -744,6 +744,9 @@ kbd {
   transition: opacity .35s ease;
 }
 .hurt.on { opacity: 1; transition: none; }
+.flash { position: absolute; inset: 0; pointer-events: none; opacity: 0; background: var(--flash, #6cc2ab); }
+.flash.on { animation: flashfade .9s ease-out both; }
+@keyframes flashfade { 0% { opacity: .85; } 100% { opacity: 0; } }
 
 /* touch */
 .touch-pad {
