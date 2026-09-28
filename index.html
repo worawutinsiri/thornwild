@@ -45,7 +45,7 @@
     <aside class="bounty-board" aria-labelledby="bounty-head">
       <h2 id="bounty-head" class="panel-head">ประกาศล่าประจำฤดู</h2>
       <ol id="bounty-list" class="bounty-list"></ol>
-      <p class="bounty-foot">ค่าหัวจ่ายที่ค่ายกิลด์ชายป่า · ระดับภัย E ต่ำสุด → A สูงสุด</p>
+      <p class="bounty-foot">รับประกาศและค่าหัวจากหัวหน้ากิลด์ที่หมู่บ้านมอสเวล · ระดับภัย E ต่ำสุด → A สูงสุด</p>
     </aside>
   </section>
 
@@ -107,6 +107,17 @@
 
     <button id="btn-pause" class="hud-menu" type="button">เมนู <kbd>Esc</kbd></button>
 
+    <button class="npc-label" id="npc-label" type="button" hidden><b id="npc-name">—</b><span id="npc-title"></span><em id="npc-hint"></em></button>
+    <section class="dialog" id="dialog" hidden aria-live="polite">
+      <div class="dlg-portrait" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v14M8 17h8M12 17v4M10 5l2-2 2 2"/><path d="M5 9c2-1 5-1 7 0s5 1 7 0"/></svg></div>
+      <div class="dlg-body">
+        <p class="dlg-name"><b id="dlg-name">—</b><span id="dlg-title"></span></p>
+        <p class="dlg-text" id="dlg-text"></p>
+        <div class="dlg-quest" id="dlg-quest" hidden></div>
+        <div class="dlg-actions" id="dlg-actions"></div>
+      </div>
+    </section>
+
     <div class="touch-pad" id="touch-pad" aria-hidden="true"><div class="touch-knob" id="touch-knob"></div></div>
     <div class="hurt" id="hurt"></div>
   </section>
@@ -120,17 +131,18 @@
       <p class="eyebrow">คู่มือนักล่าฉบับกระเป๋า</p>
       <h2>วิธีเล่น</h2>
       <dl class="controls">
-        <dt><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></dt><dd>เดิน (หรือปุ่มลูกศร)</dd>
-        <dt>เมาส์</dt><dd>เล็งทิศทางโจมตีและทักษะ</dd>
-        <dt>คลิกซ้าย</dt><dd>โจมตีปกติ กดค้างเพื่อโจมตีต่อเนื่อง</dd>
-        <dt><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd></dt><dd>ทักษะประจำอาชีพ</dd>
+        <dt>คลิกซ้าย</dt><dd>เดินไปยังจุดที่คลิก กดค้างเพื่อเดินตามเมาส์ · คลิกที่ชาวบ้านเพื่อเดินไปคุย</dd>
+        <dt>คลิกขวา</dt><dd>โจมตีปกติไปทางเมาส์ กดค้างเพื่อโจมตีต่อเนื่อง</dd>
+        <dt><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd></dt><dd>ทักษะประจำอาชีพ (เล็งตามเมาส์)</dd>
+        <dt><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></dt><dd>เดินด้วยคีย์บอร์ดก็ได้ (หรือปุ่มลูกศร)</dd>
         <dt><kbd>F</kbd></dt><dd>ดื่มยาฟื้นพลัง (ฟื้น 40% ของพลังชีวิต)</dd>
-        <dt>คลิกขวาลาก · <kbd>Q</kbd><kbd>E</kbd></dt><dd>หมุนกล้อง</dd>
+        <dt><kbd>Space</kbd></dt><dd>คุยกับหัวหน้ากิลด์ที่กระดานประกาศ เพื่อรับและส่งมอบประกาศล่า</dd>
+        <dt>ลากเมาส์กลาง · <kbd>Q</kbd><kbd>E</kbd></dt><dd>หมุนกล้อง</dd>
         <dt>ล้อเมาส์</dt><dd>ซูมเข้า–ออก</dd>
         <dt><kbd>Esc</kbd></dt><dd>พักเกม</dd>
       </dl>
       <ul class="tips">
-        <li>บนมือถือ: ลากจอยซ้ายล่างเพื่อเดิน แตะปุ่มทักษะขวาล่าง ระบบจะเล็งอสูรที่ใกล้ที่สุดให้</li>
+        <li>บนมือถือ: แตะพื้นเพื่อเดินไปตรงนั้น หรือลากจอยซ้ายล่าง แตะปุ่มทักษะขวาล่าง ระบบจะเล็งอสูรที่ใกล้ที่สุดให้ ลากนิ้วบนฉากเพื่อหมุนกล้อง</li>
         <li>อสูรตัวใหญ่จะมีวงแดงบนพื้นเตือนก่อนโจมตี ออกจากวงให้ทัน</li>
         <li>ในค่ายกิลด์ พลังชีวิตฟื้นเร็ว และอสูรจะไม่ตามเข้ามา</li>
         <li>เกมบันทึกความคืบหน้าให้เองในเบราว์เซอร์นี้ ปิดไปแล้วกดเล่นต่อได้จากหน้าหลัก (เปลี่ยนเครื่องหรือเบราว์เซอร์ต้องสร้างนักล่าใหม่)</li>
@@ -144,11 +156,13 @@
       <p class="eyebrow">พักการล่า</p>
       <h2>ป่ายังรออยู่</h2>
       <dl class="controls">
-        <dt><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></dt><dd>เดิน</dd>
-        <dt>คลิกซ้าย</dt><dd>โจมตีปกติ</dd>
+        <dt>คลิกซ้าย</dt><dd>เดินไปจุดที่คลิก (กดค้างเดินตามเมาส์)</dd>
+        <dt>คลิกขวา</dt><dd>โจมตีปกติ (กดค้างได้)</dd>
         <dt><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd></dt><dd>ทักษะ</dd>
+        <dt><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></dt><dd>เดินด้วยคีย์บอร์ด</dd>
         <dt><kbd>F</kbd></dt><dd>ยาฟื้นพลัง</dd>
-        <dt>คลิกขวาลาก · <kbd>Q</kbd><kbd>E</kbd></dt><dd>หมุนกล้อง</dd>
+        <dt><kbd>Space</kbd></dt><dd>คุยกับหัวหน้ากิลด์ รับ/ส่งประกาศ</dd>
+        <dt>ลากเมาส์กลาง · <kbd>Q</kbd><kbd>E</kbd></dt><dd>หมุนกล้อง</dd>
       </dl>
       <div class="settings">
         <label class="switch" for="opt-shadows"><input type="checkbox" id="opt-shadows"><span>เงาและแสงละเอียด <small>ปิดถ้าเครื่องกระตุก</small></span></label>

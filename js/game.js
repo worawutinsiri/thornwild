@@ -50,12 +50,13 @@
     try { window.localStorage.setItem('tw.shadows', settings.shadows ? '1' : '0'); } catch (e) {}
     UI.setShadows(settings.shadows);
   }
-  var CAMP = TW.ZONE_BY_ID.camp;
+  var VILLAGE = TW.ZONE_BY_ID.village;
   var SPAWN = { x: World.PREVIEW.x, z: World.PREVIEW.z };
 
-  var G = { mode: 'title', paused: false, time: 0, victoryShown: false, quest: { idx: 0, progress: 0 }, stats: { kills: 0, start: 0 }, cls: 'warrior', previewYaw: 0, zone: null };
+  var G = { mode: 'title', paused: false, time: 0, victoryShown: false, quest: { idx: 0, progress: 0, state: 'available' }, stats: { kills: 0, start: 0 }, cls: 'warrior', previewYaw: 0, zone: null, dialogOpen: false };
   var cam = { yaw: 0, pitch: 0.95, dist: 22, shake: 0, target: new T.Vector3() };
-  var input = { keys: {}, ndc: new T.Vector2(), mouseDown: false, attackHold: false, rDown: false, lastX: 0, lastY: 0, joy: { x: 0, y: 0, on: false }, touch: false, drag: false, moved: 0 };
+  /* mouse: left = walk to the cursor, right = basic attack toward it, middle drag (or Q/E) = camera */
+  var input = { keys: {}, ndc: new T.Vector2(), lDown: false, rDown: false, mDown: false, attackHold: false, lastX: 0, lastY: 0, joy: { x: 0, y: 0, on: false }, touch: false, drag: false, dragId: null, tapX: 0, tapY: 0, tapT: 0, tapMoved: 0 };
   var aim = new T.Vector3();
   var player = null, preview = null;
   var monsters = [], projectiles = [], effects = [], timers = [], zonesFx = [];
@@ -339,10 +340,10 @@
     p.potionCd = Math.max(0, p.potionCd - dt);
     p.invuln = Math.max(0, p.invuln - dt);
     for (var k in p.buffs) { p.buffs[k].t -= dt; if (p.buffs[k].t <= 0) endBuff(p, k); }
-    var inCamp = dist2(p.pos, CAMP) < CAMP.r;
+    var inVillage = dist2(p.pos, VILLAGE) < VILLAGE.r;
     var ooc = G.time - p.lastHurt > 5;
-    p.hp = Math.min(p.maxHp, p.hp + p.maxHp * (inCamp ? 0.06 : (ooc ? 0.012 : 0)) * dt);
-    p.mp = Math.min(p.maxMp, p.mp + (p.cls.mpRegen + (inCamp ? p.maxMp * 0.05 : 0)) * dt);
+    p.hp = Math.min(p.maxHp, p.hp + p.maxHp * (inVillage ? 0.06 : (ooc ? 0.012 : 0)) * dt);
+    p.mp = Math.min(p.maxMp, p.mp + (p.cls.mpRegen + (inVillage ? p.maxMp * 0.05 : 0)) * dt);
     if (p.buffs.ironwill) p.hp = Math.min(p.maxHp, p.hp + p.maxHp * p.buffs.ironwill.heal / p.buffs.ironwill.dur * dt);
 
     /* movement relative to the camera */
@@ -352,6 +353,17 @@
     if (input.joy.on) { fwd = -input.joy.y; str = input.joy.x; }
     var fx = -Math.sin(cam.yaw), fz = -Math.cos(cam.yaw), rx = Math.cos(cam.yaw), rz = -Math.sin(cam.yaw);
     var mx = fx * fwd + rx * str, mz = fz * fwd + rz * str, len = Math.sqrt(mx * mx + mz * mz);
+    /* click-to-move target: keys/joystick override it; arriving, or getting stuck on scenery, clears it */
+    if (len > 0.08) p.moveTo = null;
+    else if (p.moveTo && !p.dash) {
+      var tdx = p.moveTo.x - p.pos.x, tdz = p.moveTo.z - p.pos.z, td = Math.sqrt(tdx * tdx + tdz * tdz);
+      if (td < 0.45) { var talk = p.moveTo.talk; p.moveTo = null; if (talk && npcInRange()) openDialog(); }
+      else {
+        if (td < p.moveTo.best - 0.02) { p.moveTo.best = td; p.moveTo.stuckT = 0; }
+        else { p.moveTo.stuckT += dt; if (p.moveTo.stuckT > 0.6) p.moveTo = null; }
+        if (p.moveTo) { len = Math.min(1, td / 0.8); mx = tdx / td * len; mz = tdz / td * len; }
+      }
+    }
     var moving = false;
     if (p.dash) {
       var d = p.dash, step = Math.min(d.left, d.speed * dt);
@@ -393,7 +405,7 @@
     p.pos.y = World.heightAt(p.pos.x, p.pos.z);
     p.facing = angLerp(p.facing, p.targetFacing, Math.min(1, dt * 16));
 
-    if ((input.mouseDown || input.attackHold || keys.KeyJ) && !UI.anyOverlay()) useSkill(0);
+    if ((input.rDown || input.attackHold || keys.KeyJ) && !UI.anyOverlay()) useSkill(0);
 
     if (p.hurtFlash > 0) { p.hurtFlash -= dt; if (p.hurtFlash <= 0) Models.tint(p.model, 0, 0); }
     animateHero(p.model, p, dt, moving);
@@ -421,6 +433,7 @@
         case 'bow': armL = -1.55; armR = lerp(-1.55, -1.2, e); armRz = 0.4; twist = 0.35; break;
         case 'stab': var w = Math.sin(e * Math.PI); armR = -1.5 * w; armL = -1.5 * (1 - w); twist = (0.5 - e) * 0.5; break;
         case 'leap': armR = 1.0; armL = 1.0; lean = -0.3; break;
+        case 'wave': armR = -2.7 + Math.sin(e * Math.PI * 4) * 0.35; armRz = -0.3; break;
       }
       if (e >= 1) a.act = null;
     }
@@ -556,7 +569,7 @@
 
   function useSkill(i) {
     var p = player;
-    if (!p || p.dead || G.paused || G.mode !== 'game') return;
+    if (!p || p.dead || G.paused || G.mode !== 'game' || G.dialogOpen) return;
     var s = p.cls.skills[i];
     if (p.cds[i] > 0 || p.dash) return;
     if (p.mp < s.mp) { if (i > 0) UI.floater(p.pos.x, p.pos.y + 2.4, p.pos.z, 'MP ไม่พอ', 'info'); return; }
@@ -567,10 +580,11 @@
     if (ok === false) return;
     p.mp -= s.mp;
     p.cds[i] = s.cd;
+    p.moveTo = null;
   }
   function usePotion() {
     var p = player;
-    if (!p || p.dead || p.potionCd > 0 || G.paused) return;
+    if (!p || p.dead || p.potionCd > 0 || G.paused || G.dialogOpen) return;
     if (p.potions <= 0) { UI.floater(p.pos.x, p.pos.y + 2.4, p.pos.z, 'ไม่มียาแล้ว', 'info'); return; }
     p.potions--; p.potionCd = 1.5;
     var heal = Math.round(p.maxHp * 0.4);
@@ -840,8 +854,6 @@
       shake(1.2);
       if (!G.victoryShown) {
         G.victoryShown = true;
-        G.quest.idx = TW.QUESTS.length; G.quest.progress = 0;
-        UI.quest(null);
         saveGame();
         after(2.6, function () {
           var t = Math.round(G.time - G.stats.start), mm = Math.floor(t / 60), ss = t % 60;
@@ -891,7 +903,7 @@
     }
     if (m.knock) { m.pos.x += m.knock.x * dt; m.pos.z += m.knock.z * dt; m.knock.t -= dt; if (m.knock.t <= 0) m.knock = null; }
 
-    var pInCamp = p && dist2(p.pos, CAMP) < CAMP.r + 3;
+    var pInCamp = p && dist2(p.pos, VILLAGE) < VILLAGE.r + 3;
     var moving = false;
     if (m.stun > 0) {
       m.stun -= dt;
@@ -1062,23 +1074,37 @@
   }
 
   /* =============== quests =============== */
+  /* Bounties are taken and paid at the guild master: available → active → complete (turn in) → next. */
+  function refreshQuestHud() { UI.quest(TW.QUESTS[G.quest.idx] || null, G.quest.idx, G.quest.progress, G.quest.state); }
   function questProgress(type) {
     var q = TW.QUESTS[G.quest.idx];
-    if (!q || q.target !== type) return;
+    if (!q || q.target !== type || G.quest.state !== 'active') return;
     G.quest.progress++;
-    if (G.quest.progress >= q.count) completeQuest(q);
-    else UI.quest(q, G.quest.idx, G.quest.progress);
+    if (G.quest.progress >= q.count) {
+      G.quest.state = 'complete';
+      UI.toast('ประกาศล่าครบแล้ว', q.title, 'กลับไปส่งมอบกับ' + TW.NPC.name + 'ที่หมู่บ้านเพื่อรับรางวัล');
+      saveGame();
+    }
+    refreshQuestHud();
   }
-  function completeQuest(q) {
+  function acceptQuest() {
+    var q = TW.QUESTS[G.quest.idx];
+    if (!q || G.quest.state !== 'available') return;
+    G.quest.state = 'active'; G.quest.progress = 0;
+    UI.toast('รับประกาศล่าแล้ว', q.title, TW.MONSTERS[q.target].th + ' ' + q.count + ' ตัว · ' + TW.ZONE_BY_ID[q.zone].th, 'quiet');
+    refreshQuestHud();
+    saveGame();
+  }
+  function turnInQuest() {
+    var q = TW.QUESTS[G.quest.idx];
+    if (!q || G.quest.state !== 'complete') return;
     var r = q.reward, p = player;
     p.gold += r.gold; p.potions += r.potions;
-    var line = '+' + r.exp + ' EXP · +' + r.gold + ' เหรียญ' + (r.potions ? ' · +' + r.potions + ' ยาฟื้นพลัง' : '');
-    UI.toast('ประกาศล่าสำเร็จ', q.title, line);
-    G.quest.idx++; G.quest.progress = 0;
+    UI.toast('รับค่าหัวแล้ว', q.title, '+' + r.exp + ' EXP · +' + r.gold + ' เหรียญ' + (r.potions ? ' · +' + r.potions + ' ยาฟื้นพลัง' : ''), 'level');
+    Particles.burst(p.pos.x, p.pos.y + 1.2, p.pos.z, 0xd4a64a, 40, 4, 0.9, 3, 3);
+    G.quest.idx++; G.quest.progress = 0; G.quest.state = 'available';
     gainExp(r.exp);
-    var next = TW.QUESTS[G.quest.idx];
-    UI.quest(next || null, G.quest.idx, 0);
-    if (next) after(3.4, function () { if (G.mode === 'game') UI.toast('ประกาศใหม่จากกิลด์', next.title, next.brief, 'quiet'); });
+    refreshQuestHud();
     saveGame();
   }
   var navT = 0, zoneT = 0;
@@ -1088,11 +1114,65 @@
     navT = 0.25;
     var q = TW.QUESTS[G.quest.idx], p = player;
     if (!q) { UI.questNav(0, null, ''); return; }
-    var z = TW.ZONE_BY_ID[q.zone];
-    var dx = z.x - p.pos.x, dz = z.z - p.pos.z, d = Math.sqrt(dx * dx + dz * dz);
+    var toNpc = G.quest.state !== 'active';
+    var tx = toNpc ? TW.NPC.x : TW.ZONE_BY_ID[q.zone].x, tz = toNpc ? TW.NPC.z : TW.ZONE_BY_ID[q.zone].z;
+    var dx = tx - p.pos.x, dz = tz - p.pos.z, d = Math.sqrt(dx * dx + dz * dz);
     var fx = -Math.sin(cam.yaw), fz = -Math.cos(cam.yaw), rx = Math.cos(cam.yaw), rz = -Math.sin(cam.yaw);
     var ang = Math.atan2(dx * rx + dz * rz, dx * fx + dz * fz);
-    UI.questNav(ang, Math.max(0, Math.round(d - z.r * 0.6)), z.th);
+    UI.questNav(ang, Math.max(0, Math.round(d - (toNpc ? 2 : TW.ZONE_BY_ID[q.zone].r * 0.6))), toNpc ? TW.NPC.name + ' · หมู่บ้าน' : TW.ZONE_BY_ID[q.zone].th);
+  }
+
+  /* ---- the guild master ---- */
+  var npc = null;
+  function createNpc() {
+    var d = TW.NPC, model = Models.npc();
+    var y = World.heightAt(d.x, d.z);
+    model.root.position.set(d.x, y, d.z);
+    model.root.rotation.y = d.facing;
+    scene.add(model.root);
+    World.addCollider(d.x, d.z, 0.7);
+    npc = { model: model, def: d, pos: new T.Vector3(d.x, y, d.z), facing: d.facing, anim: { walk: 0, move: 0, act: null }, waveT: rand(4, 9), wasNear: false };
+  }
+  function updateNpc(dt) {
+    if (!npc) return;
+    var near = G.mode === 'game' && player && !player.dead && dist2(player.pos, npc.pos) < 7;
+    var target = near ? Math.atan2(player.pos.x - npc.pos.x, player.pos.z - npc.pos.z) : npc.def.facing;
+    npc.facing = angLerp(npc.facing, target, Math.min(1, dt * 4));
+    npc.model.root.rotation.y = npc.facing;
+    npc.waveT -= dt;
+    if ((near && !npc.wasNear) || (!near && npc.waveT <= 0)) { npc.anim.act = { type: 'wave', dur: 1.2, t: 0 }; npc.waveT = rand(6, 12); }
+    npc.wasNear = near;
+    animateHero(npc.model, { anim: npc.anim }, dt, false);
+  }
+  function npcInRange() { return !!(npc && player && !player.dead && dist2(player.pos, npc.pos) < npc.def.talkRange); }
+  var labelV = new T.Vector3();
+  function updateNpcLabel() {
+    if (!npc || G.mode !== 'game') { UI.npcLabel(false); return; }
+    var d = dist2(player.pos, npc.pos);
+    if (d > 34) { UI.npcLabel(false); return; }
+    labelV.set(npc.pos.x, npc.pos.y + 2.55, npc.pos.z).project(camera);
+    if (labelV.z > 1) { UI.npcLabel(false); return; }
+    UI.npcLabel(true, (labelV.x + 1) / 2 * window.innerWidth, (1 - labelV.y) / 2 * window.innerHeight, npcInRange(), npc.def);
+  }
+  function dialogData() {
+    var d = TW.NPC, q = TW.QUESTS[G.quest.idx], base = { name: d.name, title: d.title };
+    if (!q) return Object.assign(base, { text: d.idle, buttons: [{ act: 'close', label: 'ลาก่อน' }] });
+    if (G.quest.state === 'available') return Object.assign(base, { text: (G.quest.idx === 0 ? d.greet + ' ' : '') + q.offer, quest: q, buttons: [{ act: 'accept', label: 'รับประกาศ', primary: true }, { act: 'close', label: 'ไว้ก่อน' }] });
+    if (G.quest.state === 'active') return Object.assign(base, { text: d.active, quest: q, progress: G.quest.progress, buttons: [{ act: 'close', label: 'ปิด' }] });
+    return Object.assign(base, { text: q.done, quest: q, buttons: [{ act: 'turnin', label: 'รับรางวัล', primary: true }] });
+  }
+  function openDialog() {
+    if (G.mode !== 'game' || G.paused || !npcInRange()) return;
+    G.dialogOpen = true;
+    input.rDown = false; input.lDown = false; input.attackHold = false;
+    player.moveTo = null;
+    UI.dialog(true, dialogData());
+  }
+  function closeDialog() { G.dialogOpen = false; UI.dialog(false); }
+  function dialogAction(act) {
+    if (act === 'accept') { acceptQuest(); UI.dialog(true, dialogData()); }
+    else if (act === 'turnin') { turnInQuest(); UI.dialog(true, dialogData()); }
+    else closeDialog();
   }
   function updateZone(dt) {
     zoneT -= dt;
@@ -1154,6 +1234,8 @@
   /* =============== modes =============== */
   function showTitle() {
     saveGame();
+    closeDialog();
+    UI.npcLabel(false);
     G.mode = 'title';
     G.paused = false;
     camera.clearViewOffset();
@@ -1204,12 +1286,19 @@
     G.paused = false;
     G.victoryShown = false;
     G.zone = null;
-    G.quest = { idx: 0, progress: 0 };
+    G.dialogOpen = false;
+    UI.dialog(false);
+    G.quest = { idx: 0, progress: 0, state: 'available' };
     G.stats = { kills: 0, start: G.time };
     if (restore) {
       player.level = clamp(restore.level || 1, 1, TW.MAX_LEVEL); recalc(player, true);
       player.exp = restore.exp || 0; player.gold = restore.gold || 0; player.potions = restore.potions == null ? 3 : restore.potions;
-      G.quest = restore.quest || G.quest; G.stats.kills = restore.kills || 0; G.stats.start = G.time - (restore.elapsed || 0);
+      if (restore.quest) {
+        G.quest.idx = clamp(restore.quest.idx || 0, 0, TW.QUESTS.length);
+        G.quest.progress = restore.quest.progress || 0;
+        G.quest.state = restore.quest.state || (G.quest.progress > 0 ? 'active' : 'available');
+      }
+      G.stats.kills = restore.kills || 0; G.stats.start = G.time - (restore.elapsed || 0);
       G.victoryShown = G.quest.idx >= TW.QUESTS.length;
       if (restore.x != null) { player.pos.set(restore.x, 0, restore.z); player.pos.y = World.heightAt(restore.x, restore.z); }
     }
@@ -1218,12 +1307,16 @@
     cam.yaw = 0; cam.shake = 0;
     cam.target.set(player.pos.x, player.pos.y + 1.4, player.pos.z);
     UI.setupHUD(player);
-    UI.quest(TW.QUESTS[G.quest.idx] || null, G.quest.idx, G.quest.progress);
+    refreshQuestHud();
     UI.zone(World.zoneAt(player.pos.x, player.pos.z));
     UI.screen('game');
     navT = 0; zoneT = 0; saveT = 0;
     var q = TW.QUESTS[G.quest.idx];
-    UI.toast('ยินดีต้อนรับ ' + name, restore ? 'กลับมาล่าต่อ' : 'ใบอนุญาตออกแล้ว', q ? (restore ? 'ประกาศปัจจุบัน: ' : 'ประกาศแรก: ') + q.title + ' — ' + q.brief : '');
+    var hint = !q ? 'ป่าสงบแล้ว ล่าต่อได้ตามใจ' :
+      G.quest.state === 'available' ? 'ไปคุยกับ' + TW.NPC.name + 'ที่กระดานประกาศกลางหมู่บ้านเพื่อรับประกาศล่า' :
+      G.quest.state === 'complete' ? 'ประกาศ "' + q.title + '" ครบแล้ว กลับไปส่งมอบกับ' + TW.NPC.name :
+      'ประกาศปัจจุบัน: ' + q.title + ' — ' + q.brief;
+    UI.toast('ยินดีต้อนรับ ' + name, restore ? 'กลับมาล่าต่อที่มอสเวล' : 'ยินดีต้อนรับสู่หมู่บ้านมอสเวล', hint);
     if (input.touch && window.innerHeight > window.innerWidth) after(2.8, function () { if (G.mode === 'game') UI.toast('', 'หมุนจอเป็นแนวนอน', 'จะเห็นสนามกว้างขึ้นและกดสกิลถนัดกว่า', 'quiet'); });
     saveGame();
   }
@@ -1234,8 +1327,53 @@
     G.paused = on;
     UI.overlay('pause', on);
     input.keys = {};
-    input.mouseDown = false;
+    input.lDown = false; input.rDown = false;
     if (on) saveGame();
+  }
+
+  /* ---- click-to-move ---- */
+  var gpV = new T.Vector3();
+  /* March the cursor ray against the height field until it dips under the terrain. */
+  function groundPoint(ndc) {
+    ray.setFromCamera(ndc, camera);
+    var o = ray.ray.origin, d = ray.ray.direction;
+    if (d.y >= -0.02) return null;
+    var t = 0, prev = 0, step = 1.5;
+    for (var i = 0; i < 160; i++) {
+      t += step;
+      gpV.copy(o).addScaledVector(d, t);
+      if (gpV.y <= World.heightAt(gpV.x, gpV.z)) {
+        var lo = prev, hi = t;
+        for (var k = 0; k < 6; k++) { var mid = (lo + hi) / 2; gpV.copy(o).addScaledVector(d, mid); if (gpV.y <= World.heightAt(gpV.x, gpV.z)) hi = mid; else lo = mid; }
+        gpV.copy(o).addScaledVector(d, hi);
+        var r = Math.sqrt(gpV.x * gpV.x + gpV.z * gpV.z);
+        if (r > World.PLAY_R) { gpV.x *= World.PLAY_R / r; gpV.z *= World.PLAY_R / r; }
+        gpV.y = World.heightAt(gpV.x, gpV.z);
+        return gpV;
+      }
+      prev = t;
+    }
+    return null;
+  }
+  /* fresh = a new press (drops a marker, may target the villager); false = held button following the cursor */
+  function clickMove(fresh) {
+    var p = player;
+    if (!p || p.dead || G.paused || G.mode !== 'game' || UI.anyOverlay()) return;
+    if (fresh && npc) {
+      ray.setFromCamera(input.ndc, camera);
+      if (ray.intersectObject(npc.model.root, true).length) {
+        if (npcInRange()) { p.moveTo = null; if (!G.dialogOpen) openDialog(); return; }
+        var dx = npc.pos.x - p.pos.x, dz = npc.pos.z - p.pos.z, l = Math.sqrt(dx * dx + dz * dz) || 1;
+        p.moveTo = { x: npc.pos.x - dx / l * 2.2, z: npc.pos.z - dz / l * 2.2, talk: true, best: 1e9, stuckT: 0 };
+        fxRing(npc.pos.x, npc.pos.y, npc.pos.z, 1.2, 0xd4a64a, 0.45);
+        return;
+      }
+    }
+    var g = groundPoint(input.ndc);
+    if (!g) return;
+    p.moveTo = { x: g.x, z: g.z, talk: false, best: 1e9, stuckT: 0 };
+    if (G.dialogOpen) closeDialog();
+    if (fresh) fxRing(g.x, g.y, g.z, 0.9, 0x6cc2ab, 0.45);
   }
 
   /* =============== input =============== */
@@ -1246,8 +1384,9 @@
     if (e.code === 'Space' || e.code.indexOf('Arrow') === 0) e.preventDefault();
     if (e.repeat) return;
     if (G.mode === 'game') {
-      if (e.code === 'Escape') { if (UI.anyOverlay() && !G.paused) return; togglePause(); }
+      if (e.code === 'Escape') { if (G.dialogOpen) { closeDialog(); return; } if (UI.anyOverlay() && !G.paused) return; togglePause(); }
       if (G.paused || player.dead) return;
+      if (e.code === 'Space') { if (G.dialogOpen) closeDialog(); else openDialog(); return; }
       if (e.code === 'Digit1') useSkill(1);
       else if (e.code === 'Digit2') useSkill(2);
       else if (e.code === 'Digit3') useSkill(3);
@@ -1256,7 +1395,7 @@
     else if (G.mode === 'title' && e.code === 'Enter') showClass();
   });
   window.addEventListener('keyup', function (e) { input.keys[e.code] = false; });
-  window.addEventListener('blur', function () { input.keys = {}; input.mouseDown = false; input.rDown = false; });
+  window.addEventListener('blur', function () { input.keys = {}; input.lDown = false; input.rDown = false; input.mDown = false; });
   document.addEventListener('visibilitychange', function () { if (document.hidden) { saveGame(); if (G.mode === 'game' && !G.paused) togglePause(true); } });
   window.addEventListener('pagehide', saveGame);
   window.addEventListener('beforeunload', saveGame);
@@ -1264,30 +1403,50 @@
   canvas.addEventListener('contextmenu', function (e) { e.preventDefault(); });
   /* One touch finger on the empty scene drags the camera (or the hunter on the pedestal);
      the joystick and skill buttons capture their own pointers, so a second finger never interferes. */
+  function setNdc(x, y) { input.ndc.set((x / window.innerWidth) * 2 - 1, -(y / window.innerHeight) * 2 + 1); }
   canvas.addEventListener('pointerdown', function (e) {
     if (e.pointerType === 'touch') {
       if (input.dragId != null) return;
       input.dragId = e.pointerId; input.drag = true;
-      input.lastX = e.clientX; input.lastY = e.clientY;
+      input.lastX = input.tapX = e.clientX; input.lastY = input.tapY = e.clientY;
+      input.tapT = performance.now(); input.tapMoved = 0;
       canvas.setPointerCapture(e.pointerId);
       return;
     }
     canvas.setPointerCapture(e.pointerId);
     input.lastX = e.clientX; input.lastY = e.clientY;
-    if (e.button === 0) { if (G.mode === 'class') input.drag = true; else input.mouseDown = true; }
-    if (e.button === 2 || e.button === 1) input.rDown = true;
+    setNdc(e.clientX, e.clientY);
+    if (e.button === 0) { if (G.mode === 'class') input.drag = true; else if (G.mode === 'game') { input.lDown = true; clickMove(true); } }
+    if (e.button === 2) input.rDown = true;
+    if (e.button === 1) input.mDown = true;
   });
   canvas.addEventListener('pointermove', function (e) {
-    if (e.pointerType === 'touch') { if (e.pointerId !== input.dragId) return; }
-    else input.ndc.set((e.clientX / window.innerWidth) * 2 - 1, -(e.clientY / window.innerHeight) * 2 + 1);
-    var dx = e.clientX - input.lastX;
+    var dx = e.clientX - input.lastX, dy = e.clientY - input.lastY;
+    if (e.pointerType === 'touch') {
+      if (e.pointerId !== input.dragId) return;
+      input.tapMoved += Math.abs(dx) + Math.abs(dy);
+      input.lastX = e.clientX; input.lastY = e.clientY;
+      if (G.mode === 'class') G.previewYaw += dx * 0.012;
+      else if (G.mode === 'game') cam.yaw -= dx * 0.006;
+      return;
+    }
+    setNdc(e.clientX, e.clientY);
     input.lastX = e.clientX; input.lastY = e.clientY;
     if (G.mode === 'class' && input.drag) G.previewYaw += dx * 0.012;
-    else if (G.mode === 'game' && (input.rDown || (input.drag && e.pointerType === 'touch'))) cam.yaw -= dx * 0.006;
+    else if (G.mode === 'game') {
+      if (input.mDown) cam.yaw -= dx * 0.006;
+      if (input.lDown) clickMove(false);
+    }
   });
   function pointerEnd(e) {
-    if (e.pointerType === 'touch') { if (e.pointerId === input.dragId) { input.dragId = null; input.drag = false; } return; }
-    input.mouseDown = false; input.rDown = false; input.drag = false;
+    if (e.pointerType === 'touch') {
+      if (e.pointerId !== input.dragId) return;
+      input.dragId = null; input.drag = false;
+      /* a short tap on the scene walks there */
+      if (G.mode === 'game' && input.tapMoved < 12 && performance.now() - input.tapT < 350) { setNdc(input.tapX, input.tapY); clickMove(true); }
+      return;
+    }
+    input.lDown = false; input.rDown = false; input.mDown = false; input.drag = false;
   }
   canvas.addEventListener('pointerup', pointerEnd);
   canvas.addEventListener('pointercancel', pointerEnd);
@@ -1317,6 +1476,8 @@
   }
   function deleteSave() { try { window.localStorage.removeItem(SAVE_KEY); } catch (e) {} }
 
+  UI.on('talk', function () { if (G.dialogOpen) closeDialog(); else openDialog(); });
+  UI.on('dialog', dialogAction);
   UI.on('start', showClass);
   UI.on('back', showTitle);
   UI.on('continue-save', function () { var s = loadSave(); if (s) startGame(s.cls, s.name || TW.HUNTER_NAMES[0], s); });
@@ -1370,11 +1531,13 @@
         updatePlayer(dt);
         updateZonesFx(dt);
         if (!player.dead) { updateQuestNav(dt); updateZone(dt); }
+        if (G.dialogOpen && !npcInRange()) closeDialog();
         saveT += dt;
         if (saveT >= 10) { saveT = 0; saveGame(); }
       }
       for (var i = 0; i < monsters.length; i++) updateMonster(monsters[i], dt);
       separateMonsters();
+      updateNpc(dt);
       updateProjectiles(dt);
       updateEffects(dt);
       Particles.update(dt);
@@ -1388,6 +1551,7 @@
     }
     updateCamera(dt);
     world.sky.position.copy(camera.position);
+    updateNpcLabel();
     if (G.mode === 'game') {
       UI.hud(player, { active: player.buffs });
       hudT -= dt;
@@ -1418,10 +1582,12 @@
     UI.setShadows(settings.shadows);
     UI.initMinimap(World.minimapImage(176, 200), 200);
     populate();
+    createNpc();
     resize();
     var valid = function (id) { return TW.CLASSES.some(function (c) { return c.id === id; }); };
     if (data && data.cls && valid(data.cls)) startGame(data.cls, data.name || TW.HUNTER_NAMES[0], data);
     else if (qs.class && valid(qs.class)) startGame(qs.class, TW.HUNTER_NAMES[0], qs.auto ? { x: 0, z: 90 } : null);
+    else if (qs.screen === 'class') { showTitle(); showClass(); }
     else showTitle();
     requestAnimationFrame(frame);
   }
@@ -1435,6 +1601,8 @@
     player: function () { return player; },
     monsters: function () { return monsters; },
     teleport: function (x, z) { if (player) { player.pos.set(x, 0, z); player.pos.y = World.heightAt(x, z); cam.target.set(x, player.pos.y + 1.4, z); } },
+    npc: function () { return npc; },
+    forceQuestComplete: function () { var q = TW.QUESTS[G.quest.idx]; if (q && G.quest.state === 'active') { G.quest.progress = q.count - 1; questProgress(q.target); } },
     forceDeath: function () { if (player && !player.dead) { player.hp = 0; playerDie(); } },
     forceBossKill: function () { for (var i = 0; i < monsters.length; i++) if (monsters[i].def.boss && monsters[i].alive) { monsters[i].hp = 0; killMonster(monsters[i]); } },
   };

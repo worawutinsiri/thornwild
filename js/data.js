@@ -106,7 +106,7 @@ TW.MONSTERS = {
 /* Map regions. x/z = centre (north is −z), r = radius in metres.
    flat = terrain levelling for built areas (lift raises or sinks it). */
 TW.ZONES = [
-  { id: 'camp', th: 'ค่ายกิลด์ชายป่า', lv: 'เขตปลอดภัย', x: 0, z: 150, r: 22, flat: { r: 32, lift: 0 }, safe: true, spawns: [] },
+  { id: 'village', th: 'หมู่บ้านมอสเวล', lv: 'เขตปลอดภัย', x: 0, z: 150, r: 26, flat: { r: 36, lift: 0 }, safe: true, spawns: [] },
   { id: 'meadow', th: 'ทุ่งมอส', lv: 'Lv 1–2', x: 0, z: 82, r: 42, spawns: [{ type: 'slime', count: 12 }] },
   { id: 'pines', th: 'ป่าสนเงา', lv: 'Lv 3–4', x: 100, z: 22, r: 46, spawns: [{ type: 'wolf', count: 9, pack: 3 }] },
   { id: 'mud', th: 'ค่ายโคลนก็อบลิน', lv: 'Lv 4–5', x: -102, z: 28, r: 34, flat: { r: 30, lift: 0.5 }, spawns: [{ type: 'goblin', count: 9 }] },
@@ -116,14 +116,33 @@ TW.ZONES = [
 TW.ZONE_BY_ID = {};
 TW.ZONES.forEach(function (z) { TW.ZONE_BY_ID[z.id] = z; });
 
-/* The guild's bounty chain, completed in order. */
+/* The guild's bounty chain, taken and turned in at the guild master in the village, in order.
+   brief = tracker text, offer = what he says when handing it out, done = what he says when you return. */
 TW.QUESTS = [
-  { title: 'ทุ่งมอสล้นทะลัก', target: 'slime', count: 5, zone: 'meadow', brief: 'สไลม์ลามเข้าใกล้ค่ายแล้ว ออกไปกวาดทุ่งให้โล่ง', reward: { exp: 60, gold: 30, potions: 2 } },
-  { title: 'เงาในป่าสน', target: 'wolf', count: 4, zone: 'pines', brief: 'ฝูงหมาป่าเงาดักคนตัดไม้ ล่ามันก่อนมันล่าเรา', reward: { exp: 120, gold: 50, potions: 2 } },
-  { title: 'ถอนหอกค่ายโคลน', target: 'goblin', count: 6, zone: 'mud', brief: 'ก็อบลินปักหอกกั้นทางค้า รื้อค่ายมันซะ', reward: { exp: 180, gold: 80, potions: 3 } },
-  { title: 'สปอร์พิษจากหนอง', target: 'spore', count: 4, zone: 'swamp', brief: 'สปอร์ลอยมาถึงค่ายแล้ว ตัดต้นตอที่หนองสปอร์', reward: { exp: 220, gold: 100, potions: 3 } },
-  { title: 'หัวใจแห่งหนาม', target: 'boss', count: 1, zone: 'ruins', brief: 'ต้นเหตุทั้งหมดหลับอยู่ในซากวิหาร ปลุกมันแล้วดับหัวใจของมัน', reward: { exp: 600, gold: 300, potions: 0 }, final: true },
+  { title: 'ทุ่งมอสล้นทะลัก', target: 'slime', count: 5, zone: 'meadow', brief: 'สไลม์ลามเข้าใกล้หมู่บ้านแล้ว ออกไปกวาดทุ่งให้โล่ง', reward: { exp: 60, gold: 30, potions: 2 },
+    offer: 'สไลม์ลามจากทุ่งมอสมาถึงรั้วหมู่บ้านแล้ว ไปกวาดมันสัก 5 ตัว ให้ชาวบ้านออกไปเก็บผักได้',
+    done: 'ทุ่งโล่งขึ้นเยอะ ชาวบ้านฝากขอบคุณ นี่ค่าหัวของเจ้า' },
+  { title: 'เงาในป่าสน', target: 'wolf', count: 4, zone: 'pines', brief: 'ฝูงหมาป่าเงาดักคนตัดไม้ ล่ามันก่อนมันล่าเรา', reward: { exp: 120, gold: 50, potions: 2 },
+    offer: 'คนตัดไม้กลับมาไม่ครบ หมาป่าเงาในป่าสนดักอยู่ ล่าให้ได้ 4 ตัว ระวังมันมาเป็นฝูง',
+    done: 'ฝูงหมาป่าถอยลึกเข้าป่าแล้ว คนตัดไม้กลับไปทำงานได้ นี่ส่วนของเจ้า' },
+  { title: 'ถอนหอกค่ายโคลน', target: 'goblin', count: 6, zone: 'mud', brief: 'ก็อบลินปักหอกกั้นทางค้า รื้อค่ายมันซะ', reward: { exp: 180, gold: 80, potions: 3 },
+    offer: 'ก็อบลินตั้งค่ายโคลนปิดทางค้าฝั่งตะวันตก จัดการมันสัก 6 ตัว ที่เหลือจะแตกหนีเอง',
+    done: 'กองคาราวานผ่านได้แล้ว พ่อค้าฝากส่วนแบ่งมาให้เจ้าด้วย' },
+  { title: 'สปอร์พิษจากหนอง', target: 'spore', count: 4, zone: 'swamp', brief: 'สปอร์ลอยมาถึงหมู่บ้านแล้ว ตัดต้นตอที่หนองสปอร์', reward: { exp: 220, gold: 100, potions: 3 },
+    offer: 'สปอร์พิษลอยมาถึงหมู่บ้านตอนกลางคืน ต้นตออยู่ที่หนองสปอร์ทางตะวันตกเฉียงเหนือ ตัดเห็ดยักษ์ 4 ต้น',
+    done: 'อากาศหายใจได้แล้ว หมอบอกว่าไม่มีคนป่วยเพิ่ม เจ้าช่วยทั้งหมู่บ้านไว้' },
+  { title: 'หัวใจแห่งหนาม', target: 'boss', count: 1, zone: 'ruins', brief: 'ต้นเหตุทั้งหมดหลับอยู่ในซากวิหาร ปลุกมันแล้วดับหัวใจของมัน', reward: { exp: 600, gold: 300, potions: 0 }, final: true,
+    offer: 'ทุกอย่างมาจากซากวิหารรากทางเหนือ ธอร์นฮาร์ตผู้เฒ่าตื่นแล้ว ไม่มีใครในกิลด์กล้าไป นอกจากเจ้า เตรียมยาไปให้พอ',
+    done: 'ข้าไม่คิดว่าจะได้เห็นวันนี้ ชื่อของเจ้าจะอยู่บนกระดานนี้ตลอดไป' },
 ];
+
+/* The guild master who hands out and pays bounties, standing by the board in the village square. */
+TW.NPC = {
+  id: 'orwin', name: 'ออร์วิน', title: 'หัวหน้ากิลด์นักล่า', x: -7.2, z: 143, facing: 2.3, talkRange: 3.4,
+  greet: 'ยินดีต้อนรับสู่มอสเวล นักล่า กระดานนี้มีประกาศค้างอยู่เต็มไปหมด',
+  active: 'ยังล่าไม่ครบนี่ กลับไปให้เสร็จก่อน แล้วค่อยมารับรางวัล',
+  idle: 'ป่าสงบลงแล้วเพราะเจ้า แต่อสูรจะกลับมาเสมอ ล่าต่อได้ตามสบาย',
+};
 
 TW.HUNTER_NAMES = ['คีริน', 'ไลร่า', 'ธาวิน', 'เซเรน', 'โรวาน', 'อลิซา', 'กาเรธ', 'นภัส'];
 

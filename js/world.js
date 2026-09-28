@@ -1,6 +1,6 @@
-/* Thornwild — the valley: terrain, sky, forests, camps and collision.
+/* Thornwild — the valley: terrain, sky, forests, the village, camps and collision.
    Terrain height is a pure function of (x, z) so entities can be placed
-   without reading the mesh back. North is −z; the guild camp sits south. */
+   without reading the mesh back. North is −z; Mossvale village sits south. */
 (function () {
   'use strict';
   var T = THREE;
@@ -93,7 +93,7 @@
     var f = smooth(0.5, 0.66, fbm(x * 0.016 + 100, z * 0.016 + 100, 3));
     f = Math.max(f, zoneW('pines', x, z) * 0.95);
     f *= 1 - zoneW('meadow', x, z) * 0.9;
-    f *= 1 - zoneW('camp', x, z, 1.5);
+    f *= 1 - zoneW('village', x, z, 1.5);
     f *= 1 - zoneW('mud', x, z);
     f *= 1 - zoneW('ruins', x, z);
     f *= 1 - zoneW('swamp', x, z) * 0.85;
@@ -113,7 +113,8 @@
     c = mix(c, C.forest, forestMask(x, z) * 0.75);
     c = mix(c, C.swamp, zoneW('swamp', x, z, 1.05));
     c = mix(c, C.dirt, zoneW('mud', x, z, 0.8) * 0.9);
-    c = mix(c, C.dirt, zoneW('camp', x, z, 0.9) * 0.8);
+    c = mix(c, C.dirt, zoneW('village', x, z, 0.9) * 0.8);
+    c = mix(c, C.stone, zoneW('village', x, z, 0.42) * 0.55);
     var ru = zoneW('ruins', x, z, 0.85);
     if (ru > 0) c = mix(c, C.stone, ru * (0.35 + n * 0.5));
     var pd = pathDist(x, z);
@@ -222,7 +223,7 @@
     var anim = [];
     buildVegetation(scene);
     buildRocks(scene);
-    buildCamp(scene, anim);
+    buildVillage(scene, anim);
     buildMudCamp(scene);
     buildSwamp(scene, anim);
     buildRuins(scene, anim);
@@ -413,7 +414,7 @@
     while (tufts.length < 4200 && tries++ < 20000) {
       var a = rnd() * 6.283, rr = Math.sqrt(rnd()) * 170;
       var x2 = Math.cos(a) * rr, z2 = Math.sin(a) * rr;
-      if (forestMask(x2, z2) > 0.45 || pathDist(x2, z2) < 2 || zoneW('camp', x2, z2, 0.75) > 0.3 || zoneW('mud', x2, z2, 0.8) > 0.3 || zoneW('ruins', x2, z2, 0.75) > 0.3) continue;
+      if (forestMask(x2, z2) > 0.45 || pathDist(x2, z2) < 2 || zoneW('village', x2, z2, 0.75) > 0.3 || zoneW('mud', x2, z2, 0.8) > 0.3 || zoneW('ruins', x2, z2, 0.75) > 0.3) continue;
       var swk = zoneW('swamp', x2, z2, 0.95);
       if (swk > 0.6) continue;
       var item = { x: x2, z: z2, y: heightAt(x2, z2), s: 0.7 + rnd() * 0.8, rot: rnd() * 6.28, tx: (rnd() - 0.5) * 0.3, tz: (rnd() - 0.5) * 0.3 };
@@ -436,7 +437,7 @@
     while (flowers.length < 700 && tries++ < 6000) {
       var a2 = rnd() * 6.283, r2 = Math.sqrt(rnd()) * 60;
       var fx = Math.cos(a2) * r2, fz = 82 + Math.sin(a2) * r2;
-      if (pathDist(fx, fz) < 2.5 || zoneW('camp', fx, fz, 0.9) > 0.2 || forestMask(fx, fz) > 0.3) continue;
+      if (pathDist(fx, fz) < 2.5 || zoneW('village', fx, fz, 0.9) > 0.2 || forestMask(fx, fz) > 0.3) continue;
       flowers.push({ x: fx, z: fz, y: heightAt(fx, fz), s: 0.8 + rnd() * 0.6, rot: rnd() * 6.28 });
     }
     var flowerGeo = merge([at(new T.CylinderGeometry(0.02, 0.03, 0.4, 3), 0, 0.2, 0), at(new T.IcosahedronGeometry(0.15, 0), 0, 0.45, 0)]);
@@ -453,7 +454,7 @@
     for (var i = 0; i < 340; i++) {
       var a = rnd() * 6.283, r = 20 + Math.sqrt(rnd()) * 200;
       var x = Math.cos(a) * r, z = Math.sin(a) * r;
-      if (pathDist(x, z) < 3 || zoneW('camp', x, z, 0.9) > 0.2 || zoneW('mud', x, z, 0.8) > 0.2 || zoneW('swamp', x, z, 0.9) > 0.3) continue;
+      if (pathDist(x, z) < 3 || zoneW('village', x, z, 0.9) > 0.2 || zoneW('mud', x, z, 0.8) > 0.2 || zoneW('swamp', x, z, 0.9) > 0.3) continue;
       var edge = smooth(160, 215, r);
       var s = 0.4 + rnd() * (1.2 + edge * 2.5);
       var moss = edge < 0.3 && rnd() < 0.5;
@@ -480,15 +481,67 @@
     scene.add(pebbleMesh);
   }
 
-  /* ---------- guild camp (south) ---------- */
-  function buildCamp(scene, anim) {
-    var zn = TW.ZONE_BY_ID.camp;
+  /* ---------- Mossvale village (south) ---------- */
+  /* Timber-framed cottage: walls, corner beams, gable roof (3-sided prism), glowing windows, door, chimney. */
+  function house(g, x, z, w, d, h, faceX, faceZ, o) {
+    o = o || {};
+    var y = heightAt(x, z);
+    var grp = new T.Group();
+    grp.position.set(x, y - 0.15, z);
+    grp.rotation.y = Math.atan2(faceX - x, faceZ - z);
+    g.add(grp);
+    var wallM = H.mk(o.wall || 0xd9ccb0), beamM = H.mk(0x4a3526), roofM = H.mk(o.roof || 0x8a4a3a);
+    H.part(H.box(w, h, d), wallM, 0, h / 2, 0, grp);
+    [[-w / 2, -d / 2], [w / 2, -d / 2], [-w / 2, d / 2], [w / 2, d / 2]].forEach(function (c) { H.part(H.box(0.2, h, 0.2), beamM, c[0], h / 2, c[1], grp); });
+    H.part(H.box(w + 0.12, 0.16, d + 0.12), beamM, 0, h * 0.55, 0, grp);
+    H.part(H.box(w + 0.12, 0.16, d + 0.12), beamM, 0, h - 0.08, 0, grp);
+    var r = (d + 0.9) / 1.732;
+    var roof = H.part(new T.CylinderGeometry(r, r, w + 1.0, 3, 1), roofM, 0, h + 0.5 * r - 0.05, 0, grp);
+    roof.rotation.set(Math.PI / 6, 0, Math.PI / 2);
+    H.part(H.box(0.95, 1.7, 0.12), beamM, o.doorX || 0, 0.85, d / 2 + 0.04, grp);
+    var glassM = H.glow(0xffc27a, 0.9);
+    (o.windows || [-w / 4 - 0.3, w / 4 + 0.3]).forEach(function (wx) {
+      H.part(H.box(0.7, 0.62, 0.1), beamM, wx, 1.65, d / 2 + 0.03, grp);
+      H.part(H.box(0.56, 0.48, 0.08), glassM, wx, 1.65, d / 2 + 0.06, grp);
+    });
+    if (o.sideWindow !== false) { H.part(H.box(0.1, 0.62, 0.7), beamM, w / 2 + 0.03, 1.65, 0, grp); H.part(H.box(0.08, 0.48, 0.56), glassM, w / 2 + 0.06, 1.65, 0, grp); }
+    if (o.chimney !== false) H.part(H.box(0.55, 1.4, 0.55), H.mk(0x7d7a6e), w * 0.3, h + 1.1, -d * 0.2, grp);
+    if (o.sign) { H.part(H.box(1.6, 0.5, 0.08), H.mk(0xd4a64a, { metalness: 0.5, roughness: 0.4 }), 0, h - 0.4, d / 2 + 0.1, grp); }
+    addCollider(x, z, Math.sqrt(w * w + d * d) / 2 * 0.86 + 0.3);
+    return grp;
+  }
+
+  function buildVillage(scene, anim) {
+    var zn = TW.ZONE_BY_ID.village;
     var g = new T.Group();
     scene.add(g);
     var at = function (x, z) { return heightAt(x, z); };
+    var cx = zn.x, cz = 146; /* the square */
 
-    /* campfire */
-    var fx = -4, fz = 152, fy = at(fx, fz);
+    /* guild hall with the bounty board, and the cottages ringing the square */
+    house(g, -15, 137, 8, 6, 3.4, cx, cz, { wall: 0xc9b48a, roof: 0x3a5f56, sign: true, windows: [-2.6, 2.6] });
+    house(g, 15, 137, 6, 5, 2.8, cx, cz, { roof: 0x8a4a3a });
+    house(g, 19, 151, 5.5, 4.5, 2.7, cx, cz, { roof: 0x6b4a3a });
+    house(g, -19, 154, 6, 5, 2.8, cx, cz, { wall: 0xd2c2a2, roof: 0x7a3f33 });
+    house(g, -9, 168, 5.5, 4.5, 2.7, cx, cz, { roof: 0x8a5a3a });
+    house(g, 9, 169, 6.5, 5, 2.9, cx, cz, { wall: 0xcfbf9f, roof: 0x5f4a3a });
+
+    /* bounty board in front of the hall; the guild master stands beside it (placed by game.js) */
+    var bx = -9.5, bz = 141, by = at(bx, bz);
+    var woodM = H.mk(0x6b4a2e), paperM = H.mk(0xe8dcc0);
+    var board = new T.Group();
+    board.position.set(bx, by, bz);
+    board.rotation.y = Math.atan2(cx - bx, cz - bz);
+    g.add(board);
+    H.part(H.box(0.2, 2.8, 0.2), woodM, -1.2, 1.4, 0, board);
+    H.part(H.box(0.2, 2.8, 0.2), woodM, 1.2, 1.4, 0, board);
+    H.part(H.box(2.8, 1.7, 0.14), woodM, 0, 2.0, 0, board);
+    H.part(H.box(3.1, 0.12, 0.6), woodM, 0, 2.95, 0.1, board);
+    [[-0.85, 2.15], [0.1, 1.95], [0.9, 2.3], [-0.2, 1.55], [0.75, 1.6]].forEach(function (n) { H.part(H.box(0.55, 0.7, 0.03), paperM, n[0], n[1], 0.09, board); });
+    addCollider(bx, bz, 1.3);
+
+    /* bonfire in the square */
+    var fx = -5, fz = 153, fy = at(fx, fz);
     var stoneM = H.mk(0x6c675c);
     for (var i = 0; i < 9; i++) {
       var a = i / 9 * 6.283;
@@ -512,49 +565,96 @@
       fire.intensity = 1.5 + Math.sin(t * 23) * 0.2 + Math.sin(t * 7) * 0.15;
     });
     addCollider(fx, fz, 1.5);
-
-    /* tents facing the fire */
-    var tentM = H.mk(0xc7b28a), tentDark = H.mk(0x2b241c);
-    [[-12, 156], [10, 158], [-6, 165]].forEach(function (p) {
-      var y = at(p[0], p[1]);
-      var t = H.part(H.cone(2.7, 3.4, 4), tentM, p[0], y + 1.6, p[1], g);
-      t.rotation.y = Math.atan2(fx - p[0], fz - p[1]) + Math.PI / 4;
-      var door = H.part(H.cone(0.9, 1.7, 3), tentDark, p[0] + Math.sin(t.rotation.y - Math.PI / 4) * 1.5, y + 0.8, p[1] + Math.cos(t.rotation.y - Math.PI / 4) * 1.5, g);
-      door.rotation.y = t.rotation.y - Math.PI / 4;
-      addCollider(p[0], p[1], 2.4);
+    [[-7.2, 155.5], [-3, 155.8], [-7.5, 150.5]].forEach(function (p, i) {
+      var bench = H.part(H.box(1.6, 0.18, 0.4), woodM, p[0], at(p[0], p[1]) + 0.45, p[1], g);
+      bench.rotation.y = Math.atan2(fx - p[0], fz - p[1]) + Math.PI / 2;
+      H.part(H.box(0.18, 0.45, 0.35), woodM, p[0], at(p[0], p[1]) + 0.22, p[1], g);
     });
 
-    /* bounty board */
-    var bx = 10, bz = 146, by = at(bx, bz);
-    var woodM = H.mk(0x6b4a2e), paperM = H.mk(0xe8dcc0);
-    H.part(H.box(0.2, 2.8, 0.2), woodM, bx - 1.2, by + 1.4, bz, g);
-    H.part(H.box(0.2, 2.8, 0.2), woodM, bx + 1.2, by + 1.4, bz, g);
-    H.part(H.box(2.8, 1.7, 0.14), woodM, bx, by + 2.0, bz, g);
-    H.part(H.box(3.1, 0.12, 0.6), woodM, bx, by + 2.95, bz + 0.1, g);
-    [[-0.85, 2.15], [0.1, 1.95], [0.9, 2.3], [-0.2, 1.55]].forEach(function (n) { H.part(H.box(0.55, 0.7, 0.03), paperM, bx + n[0], by + n[1], bz + 0.09, g); });
-    addCollider(bx, bz, 1.2);
+    /* the well */
+    var wx = 7, wz = 152, wy = at(wx, wz);
+    H.part(H.cyl(1.1, 1.25, 0.9, 10), H.mk(0x8a8676), wx, wy + 0.45, wz, g);
+    H.part(H.cyl(0.85, 0.85, 0.2, 10), H.mk(0x1f2c26), wx, wy + 0.85, wz, g);
+    H.part(H.box(0.16, 2.2, 0.16), woodM, wx - 0.9, wy + 1.9, wz, g);
+    H.part(H.box(0.16, 2.2, 0.16), woodM, wx + 0.9, wy + 1.9, wz, g);
+    var wellRoof = H.part(H.cone(1.6, 0.9, 4), H.mk(0x6b4a3a), wx, wy + 3.3, wz, g);
+    wellRoof.rotation.y = Math.PI / 4;
+    H.part(H.cyl(0.05, 0.05, 1.9, 6), H.mk(0x4a3526), wx, wy + 2.7, wz, g).rotation.z = Math.PI / 2;
+    H.part(H.cyl(0.22, 0.18, 0.3, 8), H.mk(0x5a4028), wx, wy + 1.6, wz, g);
+    addCollider(wx, wz, 1.5);
+
+    /* market stall and a cart */
+    var sx = 16, sz = 145, sy = at(sx, sz);
+    var stall = new T.Group();
+    stall.position.set(sx, sy, sz);
+    stall.rotation.y = Math.atan2(cx - sx, cz - sz);
+    g.add(stall);
+    [[-1.5, -1], [1.5, -1], [-1.5, 1], [1.5, 1]].forEach(function (p) { H.part(H.box(0.14, 2.4, 0.14), woodM, p[0], 1.2, p[1], stall); });
+    H.part(H.box(3.4, 0.9, 1.0), woodM, 0, 0.55, 0.6, stall);
+    var awning = H.part(H.box(3.6, 0.1, 2.6), H.mk(0xb85c3a), 0, 2.45, 0.1, stall);
+    awning.rotation.x = 0.16;
+    H.part(H.box(0.6, 0.35, 0.5), H.mk(0xc9583a), -1.0, 1.15, 0.6, stall);
+    H.part(H.box(0.5, 0.3, 0.5), H.mk(0xd9a441), 0.1, 1.15, 0.7, stall);
+    H.part(H.sph(0.28, 8, 6), H.mk(0x7fb069), 1.0, 1.25, 0.6, stall);
+    addCollider(sx, sz, 2.2);
+    var kx = 12, kz = 155, ky = at(kx, kz);
+    var cart = new T.Group();
+    cart.position.set(kx, ky, kz);
+    cart.rotation.y = 0.6;
+    g.add(cart);
+    H.part(H.box(2.2, 0.6, 1.3), woodM, 0, 0.9, 0, cart);
+    H.part(H.cyl(0.55, 0.55, 0.14, 10), H.mk(0x4a3526), 0, 0.55, 0.72, cart).rotation.x = Math.PI / 2;
+    H.part(H.cyl(0.55, 0.55, 0.14, 10), H.mk(0x4a3526), 0, 0.55, -0.72, cart).rotation.x = Math.PI / 2;
+    H.part(H.box(1.6, 0.08, 0.08), woodM, -1.7, 0.9, 0.4, cart);
+    H.part(H.box(1.6, 0.08, 0.08), woodM, -1.7, 0.9, -0.4, cart);
+    H.part(H.cyl(0.7, 0.7, 1.0, 8), H.mk(0xd9b25a), 0, 1.5, 0, cart).rotation.z = Math.PI / 2;
+    addCollider(kx, kz, 1.6);
+
+    /* lantern posts at the square corners (emissive, no extra lights) */
+    var lampM = H.glow(0xffc070, 1.4), poleM = H.mk(0x4a3526);
+    [[-9, 148], [9, 148], [-9, 138.5], [9, 138.5]].forEach(function (p) {
+      var y = at(p[0], p[1]);
+      H.part(H.cyl(0.07, 0.09, 2.8, 6), poleM, p[0], y + 1.4, p[1], g);
+      H.part(H.box(0.36, 0.42, 0.36), poleM, p[0], y + 2.9, p[1], g);
+      H.part(H.box(0.26, 0.3, 0.26), lampM, p[0], y + 2.88, p[1], g);
+      addCollider(p[0], p[1], 0.3);
+    });
+
+    /* fence around the north half with a gate at the road */
+    var posts = [], rails = [];
+    for (var fa = -Math.PI + 0.25; fa <= -0.25; fa += 0.09) {
+      if (Math.abs(fa + Math.PI / 2) < 0.3) continue;
+      var px = zn.x + Math.cos(fa) * 24, pz = zn.z + Math.sin(fa) * 24, py = heightAt(px, pz);
+      posts.push({ x: px, z: pz, y: py - 0.1, rot: -fa });
+      var ma = fa + 0.045, mx = zn.x + Math.cos(ma) * 24, mz = zn.z + Math.sin(ma) * 24;
+      rails.push({ x: mx, z: mz, y: heightAt(mx, mz) + 0.75, rot: -ma - Math.PI / 2 });
+    }
+    var postGeo = new T.BoxGeometry(0.16, 1.2, 0.16); postGeo.translate(0, 0.6, 0);
+    scene.add(instanced(postGeo, H.mk(0x5a4028), posts));
+    var railGeo = new T.BoxGeometry(2.2, 0.1, 0.08);
+    scene.add(instanced(railGeo, H.mk(0x6b4a2e), rails));
+
+    /* hay, barrels, crates */
+    var hayM = H.mk(0xd9b25a), crateM = H.mk(0x7a5a3a);
+    [[-13, 147], [-12.2, 148.6]].forEach(function (p) { H.part(H.cyl(0.75, 0.75, 1.1, 9), hayM, p[0], at(p[0], p[1]) + 0.75, p[1], g).rotation.z = Math.PI / 2; });
+    addCollider(-12.6, 147.8, 1.5);
+    [[13.5, 150], [14.4, 149.6], [-16, 147.5]].forEach(function (p, i) {
+      var c = H.part(H.box(1.0, 1.0, 1.0), crateM, p[0], at(p[0], p[1]) + 0.5 + (i === 1 ? 1 : 0), p[1], g);
+      c.rotation.y = i * 0.5;
+    });
+    H.part(H.cyl(0.5, 0.45, 1.1, 8), crateM, 12.5, at(12.5, 148.5) + 0.55, 148.5, g);
+    addCollider(13.8, 149.8, 1.3); addCollider(-16, 147.5, 0.8);
 
     /* guild banners at the north gate */
-    var poleM = H.mk(0x4a3526), flagM = H.mk(0x3f8a78);
-    [[-5, 130], [5, 130]].forEach(function (p) {
+    var flagM = H.mk(0x3f8a78);
+    [[-5, 128], [5, 128]].forEach(function (p) {
       var y = at(p[0], p[1]);
       H.part(H.cyl(0.08, 0.1, 6.5, 6), poleM, p[0], y + 3.2, p[1], g);
-      var flag = H.part(H.box(1.6, 1.0, 0.04), flagM, p[0] + 0.85, y + 5.8, p[1], g);
+      var flag = H.part(H.box(1.6, 1.0, 0.04), flagM, p[0], y + 5.8, p[1], g);
       flag.geometry.translate(0.8, 0, 0);
-      flag.position.x = p[0];
       anim.push(function (dt, t) { flag.rotation.y = Math.sin(t * 2.1 + p[0]) * 0.35 + 0.3; });
       addCollider(p[0], p[1], 0.35);
     });
-
-    /* crates & barrels */
-    var crateM = H.mk(0x7a5a3a);
-    [[-9.5, 151.5], [-8.6, 151.2], [12, 154]].forEach(function (p, i) {
-      var y = at(p[0], p[1]);
-      var c = H.part(H.box(1.0, 1.0, 1.0), crateM, p[0], y + 0.5 + (i === 1 ? 1 : 0), p[1], g);
-      c.rotation.y = i * 0.5;
-    });
-    var barrel = H.part(H.cyl(0.5, 0.45, 1.1, 8), crateM, 13.5, at(13.5, 153) + 0.55, 153, g);
-    addCollider(-9, 151.5, 1.2); addCollider(12.5, 153.5, 1.3);
 
     /* pedestal ring — where the chosen hunter stands during class select */
     var ring = new T.Mesh(new T.RingGeometry(1.3, 1.5, 40), new T.MeshBasicMaterial({ color: 0x6cc2ab, transparent: true, opacity: 0.55, side: T.DoubleSide, depthWrite: false }));

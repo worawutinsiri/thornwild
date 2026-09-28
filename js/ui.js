@@ -112,6 +112,11 @@
     document.querySelectorAll('[data-close]').forEach(function (b) {
       b.addEventListener('click', function () { b.closest('.overlay').hidden = true; emit('overlayClosed'); });
     });
+    $('npc-label').addEventListener('click', function () { emit('talk'); });
+    $('dlg-actions').addEventListener('click', function (e) {
+      var b = e.target.closest('[data-act]');
+      if (b) emit('dialog', b.dataset.act);
+    });
 
     /* touch: joystick pad */
     var pad = $('touch-pad'), knob = $('touch-knob'), padId = null, R = 42;
@@ -248,7 +253,7 @@
     }
   };
 
-  UI.quest = function (q, idx, progress) {
+  UI.quest = function (q, idx, progress, state) {
     var box = $('hud-quest');
     if (!q) {
       setText('q-eyebrow', 'ประกาศล่า · ครบทุกใบ');
@@ -260,13 +265,30 @@
       box.classList.add('done');
       return;
     }
-    box.classList.remove('done');
-    setText('q-eyebrow', 'ประกาศล่า ' + (idx + 1) + '/' + TW.QUESTS.length);
+    var n = (idx + 1) + '/' + TW.QUESTS.length;
     setText('q-title', q.title);
-    setText('q-brief', q.brief);
-    setText('q-target', TW.MONSTERS[q.target].th);
-    setText('q-count', progress + ' / ' + q.count);
-    setW('q-fill', progress / q.count);
+    if (state === 'available') {
+      box.classList.remove('done');
+      setText('q-eyebrow', 'ประกาศล่า ' + n + ' · ยังไม่ได้รับ');
+      setText('q-brief', 'ไปคุยกับ' + TW.NPC.name + 'ที่กระดานประกาศในหมู่บ้าน');
+      setText('q-target', 'รับประกาศจาก' + TW.NPC.name);
+      setText('q-count', '');
+      setW('q-fill', 0);
+    } else if (state === 'complete') {
+      box.classList.add('done');
+      setText('q-eyebrow', 'ประกาศล่า ' + n + ' · ครบแล้ว');
+      setText('q-brief', 'กลับไปส่งมอบกับ' + TW.NPC.name + 'ที่หมู่บ้านเพื่อรับรางวัล');
+      setText('q-target', 'ส่งมอบที่หมู่บ้าน');
+      setText('q-count', q.count + ' / ' + q.count);
+      setW('q-fill', 1);
+    } else {
+      box.classList.remove('done');
+      setText('q-eyebrow', 'ประกาศล่า ' + n);
+      setText('q-brief', q.brief);
+      setText('q-target', TW.MONSTERS[q.target].th);
+      setText('q-count', progress + ' / ' + q.count);
+      setW('q-fill', progress / q.count);
+    }
   };
   UI.questNav = function (angle, dist, zoneTh) {
     var a = Math.round(angle * 100) / 100;
@@ -345,9 +367,9 @@
       var z = TW.ZONES[i];
       ctx.beginPath(); ctx.arc(tx(z.x), tz(z.z), z.r * k, 0, 6.283); ctx.stroke();
     }
-    var camp = TW.ZONE_BY_ID.camp;
+    var village = TW.ZONE_BY_ID.village;
     ctx.fillStyle = '#d4a64a';
-    ctx.save(); ctx.translate(tx(camp.x), tz(camp.z)); ctx.rotate(Math.PI / 4); ctx.fillRect(-3, -3, 6, 6); ctx.restore();
+    ctx.save(); ctx.translate(tx(village.x), tz(village.z)); ctx.rotate(Math.PI / 4); ctx.fillRect(-3.5, -3.5, 7, 7); ctx.restore();
     if (questZone) {
       ctx.strokeStyle = 'rgba(212,166,74,0.9)';
       ctx.lineWidth = 1.5;
@@ -424,6 +446,50 @@
     $('btn-new-save').classList.remove('danger');
   };
   UI.setShadows = function (on) { $('opt-shadows').checked = !!on; };
+
+  /* ---------- villagers: name tag and conversation ---------- */
+  UI.npcLabel = function (show, sx, sy, near, npc) {
+    var el = $('npc-label');
+    if (el.hidden === show) el.hidden = !show;
+    if (!show) return;
+    if (last.npcName !== npc.name) { last.npcName = npc.name; $('npc-name').textContent = npc.name; $('npc-title').textContent = npc.title; }
+    var hint = state.touch ? 'แตะเพื่อคุย' : 'กด Space เพื่อคุย';
+    if (last.npcHint !== hint) { last.npcHint = hint; $('npc-hint').textContent = hint; }
+    if (last.npcNear !== near) { last.npcNear = near; el.classList.toggle('near', near); }
+    el.style.transform = 'translate(' + sx.toFixed(1) + 'px,' + sy.toFixed(1) + 'px) translate(-50%,-100%)';
+  };
+  /* data: { name, title, text, quest?, progress?, reward?, buttons: [{ act, label, primary }] } */
+  UI.dialog = function (open, data) {
+    var el = $('dialog');
+    el.hidden = !open;
+    if (!open) return;
+    $('dlg-name').textContent = data.name;
+    $('dlg-title').textContent = data.title;
+    $('dlg-text').textContent = data.text;
+    var qbox = $('dlg-quest');
+    qbox.hidden = !data.quest;
+    if (data.quest) {
+      var q = data.quest, r = q.reward;
+      var h = '<b></b><span class="prog"></span><span class="reward"></span>';
+      qbox.innerHTML = h;
+      qbox.querySelector('b').textContent = 'ประกาศล่า: ' + q.title;
+      qbox.querySelector('.prog').textContent = 'เป้าหมาย: ' + TW.MONSTERS[q.target].th + ' ' + (data.progress == null ? q.count : data.progress + '/' + q.count) + ' ตัว · ' + TW.ZONE_BY_ID[q.zone].th;
+      qbox.querySelector('.reward').textContent = 'ค่าหัว: ' + r.exp + ' EXP · ' + r.gold + ' เหรียญ' + (r.potions ? ' · ยาฟื้นพลัง ' + r.potions + ' ขวด' : '');
+    }
+    var acts = $('dlg-actions');
+    acts.innerHTML = '';
+    data.buttons.forEach(function (b) {
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'btn ' + (b.primary ? 'btn-primary' : 'btn-ghost');
+      btn.dataset.act = b.act;
+      btn.textContent = b.label;
+      acts.appendChild(btn);
+    });
+    var first = acts.querySelector('.btn-primary') || acts.querySelector('.btn');
+    if (first && !state.touch) setTimeout(function () { first.focus({ preventScroll: true }); }, 20);
+  };
+  UI.dialogOpen = function () { return !$('dialog').hidden; };
 
   TW.UI = UI;
 })();

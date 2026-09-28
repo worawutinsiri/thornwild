@@ -42,7 +42,8 @@ class El {
     this.id = attrs.id || '';
     this.classList = new ClassList();
     (attrs.class || '').split(/\s+/).filter(Boolean).forEach((c) => this.classList.add(c));
-    this.dataset = {};
+    const self = this;
+    this.dataset = new Proxy({}, { set(t, k, v) { t[k] = String(v); self.attrs['data-' + String(k).replace(/[A-Z]/g, (m) => '-' + m.toLowerCase())] = String(v); return true; } });
     for (const k in attrs) if (k.startsWith('data-')) this.dataset[k.slice(5).replace(/-([a-z])/g, (_, c) => c.toUpperCase())] = attrs[k];
     this.hidden = 'hidden' in attrs;
     this.children = [];
@@ -167,6 +168,13 @@ function frame(n, label) {
 }
 function key(code, up) { (sandbox.__l[up ? 'keyup' : 'keydown'] || []).forEach((f) => f({ code, key: code, target: body, preventDefault() {}, repeat: false })); }
 function click(id) { const el = byId.get(id); if (!el) throw new Error('no element #' + id); el.dispatch('click', { target: el }); }
+const acts = () => byId.get('dlg-actions').children.map((c) => c.dataset.act);
+function dlg(act) {
+  const box = byId.get('dlg-actions');
+  const b = box.children.find((c) => c.dataset.act === act);
+  if (!b) throw new Error('no dialog button "' + act + '" (have: ' + acts().join(',') + ')');
+  box.dispatch('click', { target: b });
+}
 
 const onlyClass = process.argv[2], onlyFrames = +(process.argv[3] || 900);
 if (onlyClass && onlyClass !== 'flow') sandbox.location.search = '?class=' + onlyClass + '&auto=1';
@@ -194,9 +202,32 @@ try {
       byId.get('hunter-name').value = 'ทดสอบ ' + c.id;
       byId.get('oath-form').dispatch('submit');
       expect(G.state.mode === 'game' && G.player().cls.id === c.id, 'oath form starts the game as ' + c.id);
+      const p = G.player(), npc = G.npc();
+      G.state.debugAuto = false;
+      /* bounties come from the guild master: walk up, talk, accept */
+      expect(G.state.quest.state === 'available', 'quest starts unaccepted');
+      G.teleport(npc.pos.x + 1.6, npc.pos.z + 1.6); frame(3, 'to npc');
+      expect(byId.get('npc-label').classList.contains('near'), 'name tag turns into a talk prompt in range');
+      key('Space'); frame(3, 'talk');
+      expect(!byId.get('dialog').hidden, 'Space opens the guild master dialog');
+      dlg('accept'); frame(3, 'accept');
+      expect(G.state.quest.state === 'active' && G.state.quest.idx === 0, 'accepting makes the first bounty active');
+      dlg('close'); frame(2, 'close');
+      expect(byId.get('dialog').hidden, 'dialog closes');
+      G.teleport(2, 142); frame(2, 'back to the square');
+      /* mouse: left click walks to the cursor, right click attacks */
+      const scene = byId.get('scene');
+      scene.dispatch('pointerdown', { button: 0, pointerType: 'mouse', pointerId: 1, clientX: 640, clientY: 120 });
+      scene.dispatch('pointerup', { button: 0, pointerType: 'mouse', pointerId: 1, clientX: 640, clientY: 120 });
+      expect(!!p.moveTo, 'left click sets a walk target');
+      const zBefore = p.pos.z; frame(90, 'walk by click');
+      expect(p.pos.z < zBefore - 3, 'hunter walks toward the clicked ground (z ' + zBefore.toFixed(1) + ' → ' + p.pos.z.toFixed(1) + ')');
+      scene.dispatch('pointerdown', { button: 2, pointerType: 'mouse', pointerId: 1, clientX: 640, clientY: 200 }); frame(3, 'right click');
+      expect(p.cds[0] > 0 && !p.moveTo, 'right click fires the basic attack and stops walking');
+      scene.dispatch('pointerup', { button: 2, pointerType: 'mouse', pointerId: 1, clientX: 640, clientY: 200 });
+      G.teleport(2, 142); frame(2, 'reset');
       G.state.debugAuto = true;
       key('KeyW'); frame(240, 'play ' + c.id); key('KeyW', true);
-      const p = G.player();
       expect(p.pos.z < 140, c.id + ' walked north (z=' + p.pos.z.toFixed(1) + ')');
       /* spawns are random, so put the hunter beside a slime before judging combat */
       const slime = G.monsters().find((m) => m.type === 'slime' && m.alive && m.zone.id === 'meadow');
@@ -211,6 +242,16 @@ try {
       expect(G.state.paused && !byId.get('ov-pause').hidden, 'escape pauses');
       click('btn-resume'); frame(30, 'resume ' + c.id);
       expect(!G.state.paused, 'resume unpauses');
+      /* finish the bounty and hand it in at the guild master */
+      G.state.debugAuto = false;
+      G.forceQuestComplete(); frame(2, 'complete');
+      expect(G.state.quest.state === 'complete', 'bounty marked complete once the count is reached');
+      const goldBefore = p.gold, idxBefore = G.state.quest.idx;
+      G.teleport(npc.pos.x + 1.6, npc.pos.z + 1.6); frame(2, 'to npc'); key('Space'); frame(3, 'talk'); dlg('turnin'); frame(3, 'turn in');
+      expect(G.state.quest.idx === idxBefore + 1 && G.state.quest.state === 'available' && p.gold > goldBefore, 'turn-in pays and offers the next bounty');
+      expect(!byId.get('dialog').hidden && acts().includes('accept'), 'the next bounty is offered in the same conversation');
+      dlg('close'); frame(2, 'close');
+      G.state.debugAuto = true;
       G.state.debugAuto = false;
       G.forceDeath(); frame(120, 'death ' + c.id);
       expect(p.dead && !byId.get('ov-death').hidden, 'death overlay shows');
@@ -218,7 +259,7 @@ try {
       expect(!p.dead && p.hp === p.maxHp && Math.abs(p.pos.z - 144) < 3, 'respawn at camp with full hp (z=' + p.pos.z.toFixed(1) + ' hp=' + p.hp + ')');
       G.state.debugAuto = true;
       G.forceBossKill(); frame(240, 'victory ' + c.id);
-      expect(!byId.get('ov-victory').hidden && G.state.quest.idx === sandbox.TW.QUESTS.length, 'boss kill shows victory');
+      expect(!byId.get('ov-victory').hidden, 'boss kill shows victory');
       click('btn-continue'); frame(30, 'continue ' + c.id);
       const saved = JSON.parse(store.get('tw.save.v1') || 'null');
       expect(saved && saved.cls === c.id && saved.name === 'ทดสอบ ' + c.id && saved.token, c.id + ': save written with class, name, token');
