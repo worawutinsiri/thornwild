@@ -198,11 +198,15 @@ try {
       key('KeyW'); frame(240, 'play ' + c.id); key('KeyW', true);
       const p = G.player();
       expect(p.pos.z < 140, c.id + ' walked north (z=' + p.pos.z.toFixed(1) + ')');
+      /* spawns are random, so put the hunter beside a slime before judging combat */
+      const slime = G.monsters().find((m) => m.type === 'slime' && m.alive && m.zone.id === 'meadow');
+      G.teleport(slime.pos.x + 3.5, slime.pos.z + 3.5);
       key('KeyA'); key('Digit1'); frame(120, 'play ' + c.id); key('KeyA', true);
       key('Digit2'); key('Digit3'); key('KeyF'); frame(400, 'play ' + c.id);
       expect(p.potions < 3 || p.hp === p.maxHp, c.id + ' potion key consumed a potion or was full');
       const engaged = G.monsters().some((m) => m.state === 'chase' || m.state === 'windup' || m.hp < m.maxHp || !m.alive);
-      expect(engaged, c.id + ' monsters reacted to the player');
+      const nearest = Math.min(...G.monsters().filter((m) => m.alive).map((m) => Math.hypot(m.pos.x - p.pos.x, m.pos.z - p.pos.z)));
+      expect(engaged, c.id + ' monsters reacted to the player (player at ' + p.pos.x.toFixed(1) + ',' + p.pos.z.toFixed(1) + ', nearest monster ' + nearest.toFixed(1) + ' m, kills ' + G.state.stats.kills + ')');
       key('Escape'); frame(10, 'pause ' + c.id);
       expect(G.state.paused && !byId.get('ov-pause').hidden, 'escape pauses');
       click('btn-resume'); frame(30, 'resume ' + c.id);

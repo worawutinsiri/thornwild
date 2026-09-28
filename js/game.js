@@ -1434,6 +1434,7 @@
     /* test hooks used by tools/smoke.mjs */
     player: function () { return player; },
     monsters: function () { return monsters; },
+    teleport: function (x, z) { if (player) { player.pos.set(x, 0, z); player.pos.y = World.heightAt(x, z); cam.target.set(x, player.pos.y + 1.4, z); } },
     forceDeath: function () { if (player && !player.dead) { player.hp = 0; playerDie(); } },
     forceBossKill: function () { for (var i = 0; i < monsters.length; i++) if (monsters[i].def.boss && monsters[i].alive) { monsters[i].hp = 0; killMonster(monsters[i]); } },
   };
