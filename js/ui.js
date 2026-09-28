@@ -135,6 +135,16 @@
       var eq = e.target.closest('[data-equip]');
       if (eq) emit('inv-select-equip', eq.dataset.equip);
     });
+    ['shop', 'smith'].forEach(function (id) {
+      $(id).addEventListener('click', function (e) {
+        var act = e.target.closest('[data-act]');
+        if (act) { if (act.disabled) return; emit(id + '-act', act.dataset.act, act.dataset.uid ? +act.dataset.uid : act.dataset.slot); return; }
+        var tile = e.target.closest('[data-uid]');
+        if (tile) { emit(id + '-select', { uid: +tile.dataset.uid }); return; }
+        var eq = e.target.closest('[data-equip]');
+        if (eq) emit(id + '-select', { slot: eq.dataset.equip });
+      });
+    });
 
     /* touch: joystick pad */
     var pad = $('touch-pad'), knob = $('touch-knob'), padId = null, R = 42;
@@ -572,7 +582,7 @@
     });
     $('equip-slots').innerHTML = h;
     var names = $('equip-slots').querySelectorAll('.equip-slot b');
-    TW.SLOTS.forEach(function (s, i) { var it = v.equip[s.id]; names[i].textContent = it ? it.name : 'ว่าง'; });
+    TW.SLOTS.forEach(function (s, i) { var it = v.equip[s.id]; names[i].textContent = it ? Items.displayName(it) : 'ว่าง'; });
     h = '';
     v.stats.forEach(function (s) { h += '<dt></dt><dd></dd>'; });
     $('stat-list').innerHTML = h;
@@ -586,12 +596,13 @@
     });
     h += '<div class="respec"><span>ล้างแต้มทั้งหมด ' + v.respecCost + ' เหรียญ</span><button type="button" class="btn btn-ghost" data-act="respec"' + (v.canRespec ? '' : ' disabled') + '>ล้างแต้ม</button></div>';
     $('attrs').innerHTML = h;
+    $('materials').innerHTML = matsHtml(v.materials || []);
     h = '';
     for (var i = 0; i < TW.BAG_SIZE; i++) {
       var it2 = v.items[i];
       if (it2) {
         var r2 = Items.rarity(it2), sl = Items.slot(it2.slot), sel2 = v.selected && v.selected.uid === it2.uid;
-        h += '<button type="button" class="tile filled' + (sel2 ? ' selected' : '') + '" data-uid="' + it2.uid + '" style="--rar:' + r2.color + '" title="' + it2.name + '">' + svg(sl.icon) + '<span class="lv">' + it2.ilvl + '</span></button>';
+        h += '<button type="button" class="tile filled' + (sel2 ? ' selected' : '') + '" data-uid="' + it2.uid + '" style="--rar:' + r2.color + '" title="' + Items.displayName(it2) + '">' + svg(sl.icon) + (it2.plus ? '<span class="pl">+' + it2.plus + '</span>' : '') + '<span class="lv">' + it2.ilvl + '</span></button>';
       } else h += '<span class="tile"></span>';
     }
     $('bag-grid').innerHTML = h;
@@ -613,7 +624,81 @@
     else h += '<button type="button" class="btn btn-primary" data-act="equip" data-uid="' + it3.uid + '">สวมใส่</button><button type="button" class="btn btn-ghost" data-act="drop" data-uid="' + it3.uid + '">ทิ้ง</button>';
     h += '</div>';
     card.innerHTML = h;
-    card.querySelector('.card-name').textContent = it3.name;
+    card.querySelector('.card-name').textContent = Items.displayName(it3);
+  };
+  function matsHtml(list) {
+    return list.map(function (m) { return '<span class="mat' + (m.count ? '' : ' short') + '" style="--mc:' + m.color + '"><i></i>' + m.th + ' <b>' + m.count + '</b></span>'; }).join('') || '<span class="bag-hint">ยังไม่มี — ตกจากอสูรที่ล้มลง</span>';
+  }
+  function itemTile(it, extraCls, attr, worn) {
+    var Items = TW.Items, r = Items.rarity(it), sl = Items.slot(it.slot);
+    return '<button type="button" class="tile filled' + (extraCls || '') + (worn ? ' worn' : '') + '" ' + attr + ' style="--rar:' + r.color + '" title="' + Items.displayName(it) + '">' + svg(sl.icon) +
+      (it.plus ? '<span class="pl">+' + it.plus + '</span>' : '') + '<span class="lv">' + it.ilvl + '</span></button>';
+  }
+
+  /* ---------- merchant ----------
+     view: { npc, gold, potions, potionPrice, brewJelly, jelly, items, selected, commonCount, commonValue } */
+  UI.shop = function (open, v) {
+    var el = $('shop');
+    el.hidden = !open;
+    if (!open) return;
+    var Items = TW.Items;
+    $('shop-title').textContent = v.npc.name + ' · ' + v.npc.title;
+    $('shop-greet').textContent = '“' + v.npc.greet + '”';
+    $('shop-gold').textContent = v.gold;
+    $('shop-offers').innerHTML =
+      '<div class="offer"><span><b>ยาฟื้นพลัง</b><small>ฟื้น 40% ของพลังชีวิต · มี ' + v.potions + ' ขวด</small></span><button type="button" class="btn btn-primary" data-act="buy-potion"' + (v.gold < v.potionPrice ? ' disabled' : '') + '>ซื้อ <span class="price">' + v.potionPrice + '</span></button></div>' +
+      '<div class="offer"><span><b>ต้มยาฟื้นพลัง</b><small>ใช้เมือกสไลม์ ' + v.brewJelly + ' ก้อน · มี ' + v.jelly + '</small></span><button type="button" class="btn btn-ghost" data-act="brew"' + (v.jelly < v.brewJelly ? ' disabled' : '') + '>ต้ม</button></div>';
+    var h = '';
+    for (var i = 0; i < TW.BAG_SIZE; i++) h += v.items[i] ? itemTile(v.items[i], v.selected && v.selected.uid === v.items[i].uid ? ' selected' : '', 'data-uid="' + v.items[i].uid + '"') : '<span class="tile"></span>';
+    $('shop-grid').innerHTML = h;
+    $('shop-count').textContent = v.items.length + '/' + TW.BAG_SIZE;
+    $('shop-actions').innerHTML = v.commonCount ? '<button type="button" class="btn btn-ghost" data-act="sell-common">ขายของธรรมดาทั้งหมด (' + v.commonCount + ' ชิ้น) <span class="price">+' + v.commonValue + '</span></button>' : '';
+    var card = $('shop-card');
+    if (!v.selected) { card.innerHTML = '<p class="card-empty">เลือกของในกระเป๋าเพื่อดูราคารับซื้อ</p>'; return; }
+    var it = v.selected, r = Items.rarity(it);
+    card.innerHTML = '<p class="card-name" style="--rar:' + r.color + '"></p><p class="card-meta">' + r.th + ' · ' + Items.slot(it.slot).th + ' · ระดับ ' + it.ilvl + '</p><ul class="card-lines">' +
+      Items.lines(it).map(function (l) { return '<li' + (l.main ? ' class="main"' : '') + '><span>' + Items.label(l.stat) + '</span><span>' + Items.fmt(l.stat, l.value, true) + '</span></li>'; }).join('') +
+      '</ul><div class="card-actions"><button type="button" class="btn btn-primary" data-act="sell" data-uid="' + it.uid + '">ขาย <span class="price">' + Items.value(it) + ' เหรียญ</span></button></div>';
+    card.querySelector('.card-name').textContent = Items.displayName(it);
+  };
+
+  /* ---------- smith ----------
+     view: { npc, gold, materials:[{id,th,color,count}], candidates:[{item,worn}], selected, worn, cost, canUpgrade, preview } */
+  UI.smith = function (open, v) {
+    var el = $('smith');
+    el.hidden = !open;
+    if (!open) return;
+    var Items = TW.Items;
+    $('smith-title').textContent = v.npc.name + ' · ' + v.npc.title;
+    $('smith-greet').textContent = '“' + v.npc.greet + '”';
+    $('smith-gold').textContent = v.gold;
+    $('smith-mats').innerHTML = matsHtml(v.materials);
+    var h = '';
+    v.candidates.forEach(function (c) {
+      var sel = v.selected && v.selected.uid === c.item.uid;
+      h += itemTile(c.item, sel ? ' selected' : '', c.worn ? 'data-equip="' + c.item.slot + '"' : 'data-uid="' + c.item.uid + '"', c.worn);
+    });
+    $('smith-grid').innerHTML = h || '<span class="bag-hint">ยังไม่มีอุปกรณ์ให้ตี</span>';
+    var card = $('smith-card');
+    if (!v.selected) { card.innerHTML = '<p class="card-empty">เลือกของที่สวมอยู่หรือในกระเป๋า</p>'; return; }
+    var it = v.selected, r = Items.rarity(it), cur = Items.lines(it), nxt = v.preview;
+    h = '<p class="card-name" style="--rar:' + r.color + '"></p><p class="card-meta">' + r.th + ' · ' + Items.slot(it.slot).th + ' · ระดับ ' + it.ilvl + (v.worn ? ' · สวมใส่อยู่' : '') + '</p><ul class="card-lines">';
+    cur.forEach(function (l, i) {
+      var n = nxt ? nxt[i] : null, d = n ? n.value - l.value : 0;
+      h += '<li' + (l.main ? ' class="main"' : '') + '><span>' + Items.label(l.stat) + '</span><span>' + Items.fmt(l.stat, l.value, true) + (d > 0.001 ? ' <span class="d up">→ ' + Items.fmt(l.stat, n.value, true) + '</span>' : '') + '</span></li>';
+    });
+    h += '</ul>';
+    if (!v.cost) h += '<p class="card-meta">ตีบวกถึงขีดสุดแล้ว (+' + TW.UPGRADE.max + ')</p>';
+    else {
+      h += '<ul class="cost-list"><li><span>ค่าตี +' + v.cost.next + '</span><span class="' + (v.gold >= v.cost.gold ? 'ok' : 'no') + '">' + v.cost.gold + ' เหรียญ</span></li>';
+      Object.keys(v.cost.mats).forEach(function (k) {
+        var m = v.materials.filter(function (x) { return x.id === k; })[0];
+        h += '<li><span>' + (m ? m.th : k) + '</span><span class="' + (m && m.count >= v.cost.mats[k] ? 'ok' : 'no') + '">' + (m ? m.count : 0) + ' / ' + v.cost.mats[k] + '</span></li>';
+      });
+      h += '</ul><div class="card-actions"><button type="button" class="btn btn-primary" data-act="upgrade"' + (v.canUpgrade ? '' : ' disabled') + '>ตีบวกเป็น +' + v.cost.next + '</button></div>';
+    }
+    card.innerHTML = h;
+    card.querySelector('.card-name').textContent = Items.displayName(it);
   };
 
   /* ---------- panel tabs & skill tree ---------- */

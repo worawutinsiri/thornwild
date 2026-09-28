@@ -53,7 +53,7 @@
   var VILLAGE = TW.ZONE_BY_ID.village;
   var SPAWN = { x: World.PREVIEW.x, z: World.PREVIEW.z };
 
-  var G = { mode: 'title', paused: false, time: 0, victoryShown: false, quest: { idx: 0, progress: 0, state: 'available' }, stats: { kills: 0, start: 0 }, cls: 'warrior', previewYaw: 0, zone: null, dialogOpen: false, panel: null, invSel: null, hitstop: 0, waystones: {}, dialogKind: '', panelTab: 'char' };
+  var G = { mode: 'title', paused: false, time: 0, victoryShown: false, quest: { idx: 0, progress: 0, state: 'available' }, stats: { kills: 0, start: 0 }, cls: 'warrior', previewYaw: 0, zone: null, dialogOpen: false, panel: null, invSel: null, hitstop: 0, waystones: {}, dialogKind: '', panelTab: 'char', shopSel: null, smithSel: null };
   var cam = { yaw: 0, pitch: 0.95, dist: 22, shake: 0, target: new T.Vector3() };
   /* mouse: left = walk to the cursor, right = basic attack toward it, middle drag (or Q/E) = camera */
   var input = { keys: {}, ndc: new T.Vector2(), lDown: false, rDown: false, mDown: false, attackHold: false, lastX: 0, lastY: 0, joy: { x: 0, y: 0, on: false }, touch: false, drag: false, dragId: null, tapX: 0, tapY: 0, tapT: 0, tapMoved: 0 };
@@ -281,6 +281,7 @@
       inventory: [], equip: { weapon: null, armor: null, trinket: null }, bonus: TW.Items.bonus({}), dodgeCd: 0,
       attrs: { str: 0, vit: 0, agi: 0, int: 0 }, points: 0, cdr: 0, mpRegenBonus: 0,
       skills: { unlocked: {} }, skillPoints: 0, flags: {}, critMult: cls.critMult, lifesteal: 0, dodgeCdMax: TW.DODGE.cd,
+      materials: {},
     };
     p.pos.y = World.heightAt(p.pos.x, p.pos.z);
     recalc(p, true);
@@ -383,7 +384,7 @@
     if (len > 0.08) p.moveTo = null;
     else if (p.moveTo && !p.dash) {
       var tdx = p.moveTo.x - p.pos.x, tdz = p.moveTo.z - p.pos.z, td = Math.sqrt(tdx * tdx + tdz * tdz);
-      if (td < 0.45) { var talk = p.moveTo.talk, travel = p.moveTo.travel; p.moveTo = null; if (talk && npcInRange()) openDialog(); else if (travel) openTravel(); }
+      if (td < 0.45) { var talk = p.moveTo.talk, travel = p.moveTo.travel; p.moveTo = null; if (talk && inRangeOf(talk)) interactWith(talk); else if (travel) openTravel(); }
       else {
         if (td < p.moveTo.best - 0.02) { p.moveTo.best = td; p.moveTo.stuckT = 0; }
         else { p.moveTo.stuckT += dt; if (p.moveTo.stuckT > 0.6) p.moveTo = null; }
@@ -978,6 +979,12 @@
     var gold = Math.round(randi(m.def.gold[0], m.def.gold[1]) * (1 + player.bonus.goldPct / 100));
     player.gold += gold;
     maybeDropItem(m);
+    var matD = TW.MATERIALS.filter(function (x) { return x.from === m.type; })[0];
+    if (matD && (m.def.boss || Math.random() < TW.MATERIAL_DROP)) {
+      var mn = m.elite ? 2 : 1;
+      addMaterial(matD.id, mn);
+      UI.floater(m.pos.x, m.pos.y + m.def.height * 0.5 + 0.7, m.pos.z, '+' + mn + ' ' + matD.th, 'item', matD.color);
+    }
     UI.floater(m.pos.x, m.pos.y + m.def.height * 0.6, m.pos.z, '+' + gold + ' เหรียญ', 'gold');
     if (Math.random() < (m.def.boss ? 1 : 0.12)) {
       player.potions += m.def.boss ? 3 : 1;
@@ -1269,36 +1276,53 @@
   }
 
   /* ---- the guild master ---- */
-  var npc = null;
-  function createNpc() {
-    var d = TW.NPC, model = Models.npc();
-    var y = World.heightAt(d.x, d.z);
-    model.root.position.set(d.x, y, d.z);
-    model.root.rotation.y = d.facing;
-    scene.add(model.root);
-    World.addCollider(d.x, d.z, 0.7);
-    npc = { model: model, def: d, pos: new T.Vector3(d.x, y, d.z), facing: d.facing, anim: { walk: 0, move: 0, act: null }, waveT: rand(4, 9), wasNear: false };
+  var npcs = [], npc = null; /* npc = the guild master (bounties); npcs = everyone you can talk to */
+  function createNpcs() {
+    TW.NPCS.forEach(function (d) {
+      var model = Models.npc(d.role), y = World.heightAt(d.x, d.z);
+      model.root.position.set(d.x, y, d.z);
+      model.root.rotation.y = d.facing;
+      scene.add(model.root);
+      World.addCollider(d.x, d.z, 0.7);
+      npcs.push({ model: model, def: d, pos: new T.Vector3(d.x, y, d.z), facing: d.facing, anim: { walk: 0, move: 0, act: null }, waveT: rand(4, 9), wasNear: false });
+    });
+    npc = npcs[0];
+  }
+  function inRangeOf(n) { return !!(n && player && !player.dead && dist2(player.pos, n.pos) < n.def.talkRange); }
+  function nearestNpc(maxD) {
+    var best = null, bd = maxD || 1e9;
+    if (!player) return null;
+    for (var i = 0; i < npcs.length; i++) { var d = dist2(player.pos, npcs[i].pos); if (d < bd) { bd = d; best = npcs[i]; } }
+    return best;
+  }
+  /* Space / tap / click on a villager: what happens depends on who they are */
+  function interactWith(n) {
+    if (!n || !inRangeOf(n)) return;
+    if (n.def.role === 'merchant') openShop();
+    else if (n.def.role === 'smith') openSmith();
+    else openDialog();
   }
   function updateNpc(dt) {
-    if (!npc) return;
-    var near = G.mode === 'game' && player && !player.dead && dist2(player.pos, npc.pos) < 7;
-    var target = near ? Math.atan2(player.pos.x - npc.pos.x, player.pos.z - npc.pos.z) : npc.def.facing;
-    npc.facing = angLerp(npc.facing, target, Math.min(1, dt * 4));
-    npc.model.root.rotation.y = npc.facing;
-    npc.waveT -= dt;
-    if ((near && !npc.wasNear) || (!near && npc.waveT <= 0)) { npc.anim.act = { type: 'wave', dur: 1.2, t: 0 }; npc.waveT = rand(6, 12); }
-    npc.wasNear = near;
-    animateHero(npc.model, { anim: npc.anim }, dt, false);
+    for (var i = 0; i < npcs.length; i++) {
+      var n = npcs[i];
+      var near = G.mode === 'game' && player && !player.dead && dist2(player.pos, n.pos) < 7;
+      var target = near ? Math.atan2(player.pos.x - n.pos.x, player.pos.z - n.pos.z) : n.def.facing;
+      n.facing = angLerp(n.facing, target, Math.min(1, dt * 4));
+      n.model.root.rotation.y = n.facing;
+      n.waveT -= dt;
+      if ((near && !n.wasNear) || (!near && n.waveT <= 0)) { n.anim.act = { type: 'wave', dur: 1.2, t: 0 }; n.waveT = rand(6, 12); }
+      n.wasNear = near;
+      animateHero(n.model, { anim: n.anim }, dt, false);
+    }
   }
-  function npcInRange() { return !!(npc && player && !player.dead && dist2(player.pos, npc.pos) < npc.def.talkRange); }
+  function npcInRange() { return inRangeOf(npc); }
   var labelV = new T.Vector3();
   function updateNpcLabel() {
-    if (!npc || G.mode !== 'game') { UI.npcLabel(false); return; }
-    var d = dist2(player.pos, npc.pos);
-    if (d > 34) { UI.npcLabel(false); return; }
-    labelV.set(npc.pos.x, npc.pos.y + 2.55, npc.pos.z).project(camera);
+    var n = G.mode === 'game' && player ? nearestNpc(34) : null;
+    if (!n) { UI.npcLabel(false); return; }
+    labelV.set(n.pos.x, n.pos.y + 2.55, n.pos.z).project(camera);
     if (labelV.z > 1) { UI.npcLabel(false); return; }
-    UI.npcLabel(true, (labelV.x + 1) / 2 * window.innerWidth, (1 - labelV.y) / 2 * window.innerHeight, npcInRange(), npc.def);
+    UI.npcLabel(true, (labelV.x + 1) / 2 * window.innerWidth, (1 - labelV.y) / 2 * window.innerHeight, inRangeOf(n), n.def);
   }
   function dialogData() {
     var d = TW.NPC, q = TW.QUESTS[G.quest.idx], base = { name: d.name, title: d.title };
@@ -1468,6 +1492,9 @@
         }
       });
       player.skillPoints = Math.max(0, skillBudget - used);
+      player.materials = {};
+      if (restore.materials && typeof restore.materials === 'object') TW.MATERIALS.forEach(function (md) { var n = Math.floor(restore.materials[md.id]); if (n > 0) player.materials[md.id] = Math.min(999, n); });
+      player.inventory.concat(TW.SLOTS.map(function (s) { return player.equip[s.id]; })).forEach(function (it) { if (it) it.plus = clamp(Math.floor(it.plus || 0), 0, TW.UPGRADE.max); });
       recalc(player, true);
       G.victoryShown = G.quest.idx >= TW.QUESTS.length;
       if (restore.x != null) { player.pos.set(restore.x, 0, restore.z); player.pos.y = World.heightAt(restore.x, restore.z); }
@@ -1612,6 +1639,7 @@
       equip: p.equip, items: p.inventory, stats: statLines(p), selected: sel, equipped: equipped, compare: sel ? p.equip[sel.slot] : null,
       attrs: TW.ATTRS.map(function (a) { return { id: a.id, th: a.th, desc: a.desc, value: p.attrs[a.id] || 0 }; }),
       points: p.points, respecCost: cost, canRespec: spent > 0 && p.gold >= cost,
+      materials: matList(),
     });
     renderSkillTree();
     UI.panelTab(G.panelTab);
@@ -1684,6 +1712,7 @@
   /* tab = 'char' | 'skills'; pressing the other tab's key while open just switches tabs */
   function toggleInventory(on, tab) {
     if (G.mode !== 'game' || !player) return;
+    if (G.panel && G.panel !== 'inventory') { closePanel(); if (on === false) return; on = true; }
     if (G.panel && on == null && tab && tab !== G.panelTab) { G.panelTab = tab; renderInventory(); return; }
     if (on == null) on = !G.panel;
     if (on && (player.dead || G.paused || UI.anyOverlay())) return;
@@ -1782,6 +1811,82 @@
     saveGame();
   }
 
+  /* =============== merchant & smith =============== */
+  function addMaterial(id, n) { player.materials[id] = (player.materials[id] || 0) + n; }
+  function matList() { return TW.MATERIALS.map(function (m) { return { id: m.id, th: m.th, color: m.color, count: player.materials[m.id] || 0 }; }); }
+  function closePanel() {
+    if (!G.panel) return;
+    G.panel = null; G.shopSel = null; G.smithSel = null;
+    UI.inventory(false); UI.shop(false); UI.smith(false);
+  }
+  function openPanel(kind) {
+    if (G.mode !== 'game' || G.paused || !player || player.dead || UI.anyOverlay()) return false;
+    if (G.dialogOpen) closeDialog();
+    if (G.panel) closePanel();
+    G.panel = kind;
+    input.keys = {}; input.lDown = false; input.rDown = false; input.attackHold = false;
+    player.moveTo = null;
+    return true;
+  }
+  function openShop() { if (openPanel('shop')) { G.shopSel = null; renderShop(); } }
+  function renderShop() {
+    var p = player, i = G.shopSel != null ? findItem(G.shopSel) : -1;
+    var commons = p.inventory.filter(function (it) { return it.rarity === 0; });
+    UI.shop(true, {
+      npc: TW.NPCS[1], gold: p.gold, potions: p.potions, potionPrice: TW.SHOP.potionPrice, brewJelly: TW.SHOP.brewJelly, jelly: p.materials.jelly || 0,
+      items: p.inventory, selected: i >= 0 ? p.inventory[i] : null,
+      commonCount: commons.length, commonValue: commons.reduce(function (s, it) { return s + TW.Items.value(it); }, 0),
+    });
+  }
+  function shopAction(act, id) {
+    var p = player;
+    if (act === 'close') { closePanel(); return; }
+    if (act === 'buy-potion') { if (p.gold < TW.SHOP.potionPrice) return; p.gold -= TW.SHOP.potionPrice; p.potions++; }
+    else if (act === 'brew') { if ((p.materials.jelly || 0) < TW.SHOP.brewJelly) return; p.materials.jelly -= TW.SHOP.brewJelly; p.potions++; }
+    else if (act === 'sell') { var i = findItem(id); if (i < 0) return; p.gold += TW.Items.value(p.inventory[i]); p.inventory.splice(i, 1); G.shopSel = null; }
+    else if (act === 'sell-common') {
+      for (var k = p.inventory.length - 1; k >= 0; k--) if (p.inventory[k].rarity === 0) { p.gold += TW.Items.value(p.inventory[k]); p.inventory.splice(k, 1); }
+      G.shopSel = null;
+    }
+    renderShop();
+    saveGame();
+  }
+  function openSmith() { if (openPanel('smith')) { G.smithSel = null; renderSmith(); } }
+  function smithSelected() {
+    var p = player, s = G.smithSel;
+    if (!s) return null;
+    if (s.slot) return p.equip[s.slot] || null;
+    var i = findItem(s.uid);
+    return i >= 0 ? p.inventory[i] : null;
+  }
+  function renderSmith() {
+    var p = player, sel = smithSelected(), cost = sel ? TW.Items.upgradeCost(sel) : null, cands = [];
+    TW.SLOTS.forEach(function (s) { if (p.equip[s.id]) cands.push({ item: p.equip[s.id], worn: true }); });
+    p.inventory.forEach(function (it) { cands.push({ item: it, worn: false }); });
+    UI.smith(true, {
+      npc: TW.NPCS[2], gold: p.gold, materials: matList(), candidates: cands, selected: sel, worn: !!(sel && G.smithSel.slot), cost: cost,
+      canUpgrade: !!(sel && TW.Items.canUpgrade(sel, p.gold, p.materials)),
+      preview: sel && cost ? TW.Items.lines(Object.assign({}, sel, { plus: cost.next })) : null,
+    });
+  }
+  function smithAction(act) {
+    var p = player;
+    if (act === 'close') { closePanel(); return; }
+    if (act === 'upgrade') {
+      var sel = smithSelected();
+      if (!sel || !TW.Items.canUpgrade(sel, p.gold, p.materials)) return;
+      var cost = TW.Items.upgradeCost(sel);
+      p.gold -= cost.gold;
+      Object.keys(cost.mats).forEach(function (k) { p.materials[k] -= cost.mats[k]; });
+      sel.plus = cost.next;
+      if (G.smithSel.slot) recalc(p, false);
+      UI.toast('', TW.Items.displayName(sel), 'ตีบวกสำเร็จ', 'level');
+      Particles.burst(p.pos.x, p.pos.y + 1.2, p.pos.z, 0xffb35c, 30, 4, 0.8, 3, 3);
+    }
+    renderSmith();
+    saveGame();
+  }
+
   /* ---- click-to-move ---- */
   var gpV = new T.Vector3();
   /* March the cursor ray against the height field until it dips under the terrain. */
@@ -1810,13 +1915,15 @@
   function clickMove(fresh) {
     var p = player;
     if (!p || p.dead || G.paused || G.panel || G.mode !== 'game' || UI.anyOverlay()) return;
-    if (fresh && npc) {
+    if (fresh) {
       ray.setFromCamera(input.ndc, camera);
-      if (ray.intersectObject(npc.model.root, true).length) {
-        if (npcInRange()) { p.moveTo = null; if (!G.dialogOpen) openDialog(); return; }
-        var dx = npc.pos.x - p.pos.x, dz = npc.pos.z - p.pos.z, l = Math.sqrt(dx * dx + dz * dz) || 1;
-        p.moveTo = { x: npc.pos.x - dx / l * 2.2, z: npc.pos.z - dz / l * 2.2, talk: true, best: 1e9, stuckT: 0 };
-        fxRing(npc.pos.x, npc.pos.y, npc.pos.z, 1.2, 0xd4a64a, 0.45);
+      for (var ni = 0; ni < npcs.length; ni++) {
+        var n = npcs[ni];
+        if (!ray.intersectObject(n.model.root, true).length) continue;
+        if (inRangeOf(n)) { p.moveTo = null; if (!G.dialogOpen) interactWith(n); return; }
+        var dx = n.pos.x - p.pos.x, dz = n.pos.z - p.pos.z, l = Math.sqrt(dx * dx + dz * dz) || 1;
+        p.moveTo = { x: n.pos.x - dx / l * 2.2, z: n.pos.z - dz / l * 2.2, talk: n, best: 1e9, stuckT: 0 };
+        fxRing(n.pos.x, n.pos.y, n.pos.z, 1.2, 0xd4a64a, 0.45);
         return;
       }
     }
@@ -1848,11 +1955,11 @@
     if (e.code === 'Space' || e.code.indexOf('Arrow') === 0) e.preventDefault();
     if (e.repeat) return;
     if (G.mode === 'game') {
-      if (e.code === 'Escape') { if (G.panel) { toggleInventory(false); return; } if (G.dialogOpen) { closeDialog(); return; } if (UI.anyOverlay() && !G.paused) return; togglePause(); }
+      if (e.code === 'Escape') { if (G.panel) { closePanel(); return; } if (G.dialogOpen) { closeDialog(); return; } if (UI.anyOverlay() && !G.paused) return; togglePause(); }
       if (e.code === 'KeyI' || e.code === 'KeyC') { toggleInventory(undefined, 'char'); return; }
       if (e.code === 'KeyK') { toggleInventory(undefined, 'skills'); return; }
       if (G.paused || G.panel || player.dead) return;
-      if (e.code === 'Space') { if (G.dialogOpen) closeDialog(); else if (npcInRange()) openDialog(); else openTravel(); return; }
+      if (e.code === 'Space') { if (G.dialogOpen) closeDialog(); else { var nn = nearestNpc(); if (nn && inRangeOf(nn)) interactWith(nn); else openTravel(); } return; }
       if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') { dodge(); return; }
       if (e.code === 'Digit1') useSkill(1);
       else if (e.code === 'Digit2') useSkill(2);
@@ -1943,11 +2050,15 @@
   }
   function deleteSave() { try { window.localStorage.removeItem(SAVE_KEY); } catch (e) {} }
 
-  UI.on('talk', function () { if (G.dialogOpen) closeDialog(); else openDialog(); });
+  UI.on('talk', function () { if (G.dialogOpen) closeDialog(); else interactWith(nearestNpc()); });
   UI.on('dialog', dialogAction);
   UI.on('inventory', function (on) { toggleInventory(on === false ? false : undefined); });
   UI.on('dodge', dodge);
-  UI.on('panel-tab', function (tab) { if (G.panel) { G.panelTab = tab; renderInventory(); } });
+  UI.on('panel-tab', function (tab) { if (G.panel === 'inventory') { G.panelTab = tab; renderInventory(); } });
+  UI.on('shop-act', shopAction);
+  UI.on('shop-select', function (s) { G.shopSel = s.uid; renderShop(); });
+  UI.on('smith-act', smithAction);
+  UI.on('smith-select', function (s) { G.smithSel = s; renderSmith(); });
   UI.on('inv-select', function (uid) { G.invSel = { uid: uid }; renderInventory(); });
   UI.on('inv-select-equip', function (slot) { G.invSel = { slot: slot }; renderInventory(); });
   UI.on('inv-act', function (act, id) {
@@ -2057,7 +2168,7 @@
   /* =============== boot =============== */
   function snapshot() {
     if (G.mode !== 'game' || !player) return {};
-    return { cls: player.cls.id, name: player.name, level: player.level, exp: player.exp, gold: player.gold, potions: player.potions, quest: G.quest, kills: G.stats.kills, x: player.pos.x, z: player.pos.z, elapsed: G.time - G.stats.start, inventory: player.inventory, equip: player.equip, attrs: player.attrs, points: player.points, waystones: Object.keys(G.waystones), skills: Object.keys(player.skills.unlocked), skillPoints: player.skillPoints };
+    return { cls: player.cls.id, name: player.name, level: player.level, exp: player.exp, gold: player.gold, potions: player.potions, quest: G.quest, kills: G.stats.kills, x: player.pos.x, z: player.pos.z, elapsed: G.time - G.stats.start, inventory: player.inventory, equip: player.equip, attrs: player.attrs, points: player.points, waystones: Object.keys(G.waystones), skills: Object.keys(player.skills.unlocked), skillPoints: player.skillPoints, materials: player.materials };
   }
   var autoT = 0;
   function debugAuto(dt) {
@@ -2075,7 +2186,7 @@
     UI.setShadows(settings.shadows);
     UI.initMinimap(World.minimapImage(176, 200), 200);
     populate();
-    createNpc();
+    createNpcs();
     resize();
     var valid = function (id) { return TW.CLASSES.some(function (c) { return c.id === id; }); };
     if (data && data.cls && valid(data.cls)) startGame(data.cls, data.name || TW.HUNTER_NAMES[0], data);
@@ -2095,6 +2206,9 @@
     monsters: function () { return monsters; },
     teleport: function (x, z) { if (player) { player.pos.set(x, 0, z); player.pos.y = World.heightAt(x, z); cam.target.set(x, player.pos.y + 1.4, z); } },
     npc: function () { return npc; },
+    npcs: function () { return npcs; },
+    materials: function () { return player ? player.materials : {}; },
+    debugMaterial: function (id, n) { if (player) addMaterial(id, n); },
     pickups: function () { return pickups; },
     inventory: function () { return player ? player.inventory : []; },
     equip: function () { return player ? player.equip : {}; },

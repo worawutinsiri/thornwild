@@ -1035,6 +1035,32 @@ kbd {
 .node.locked { opacity: .55; }
 .node .btn { min-height: 34px; padding: 0 12px; font-size: var(--s-2); justify-self: start; margin-top: 2px; }
 @media (max-width: 900px) { .tree { grid-template-columns: 1fr; } }
+
+/* materials, shop & forge */
+.mats { display: flex; flex-wrap: wrap; gap: 6px; }
+.mat { display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px; font-size: var(--s-2); background: rgba(235, 226, 201, .05); box-shadow: inset 0 0 0 1px var(--line); clip-path: var(--notch-sm); font-variant-numeric: tabular-nums; }
+.mat i { width: 9px; height: 9px; background: var(--mc, var(--bone-dim)); clip-path: var(--notch-sm); }
+.mat b { font-weight: 600; }
+.mat.short { color: var(--bone-faint); }
+.tile .pl { position: absolute; left: 4px; top: 2px; font-size: .625rem; font-weight: 700; color: var(--brass); text-shadow: 0 1px 2px #000; }
+.panel-gold { display: flex; align-items: center; gap: 12px; font-size: var(--s-1); color: var(--bone-dim); }
+.panel-gold b { color: var(--brass); font-size: var(--s1); font-variant-numeric: tabular-nums; }
+.shop-greet { margin: 4px 0 0; font-family: var(--f-head); font-style: italic; font-size: var(--s-1); color: var(--bone-dim); }
+.shop-body { grid-template-columns: 260px minmax(0, 1fr) 280px; }
+.offers { display: grid; gap: 8px; }
+.offer { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 10px 12px; background: rgba(235, 226, 201, .04); box-shadow: inset 0 0 0 1px var(--line); clip-path: var(--notch-sm); }
+.offer b { display: block; font-weight: 600; }
+.offer small { display: block; font-size: var(--s-2); color: var(--bone-dim); line-height: 1.4; }
+.offer .btn { min-height: 36px; padding: 0 14px; font-size: var(--s-2); white-space: nowrap; }
+.price { color: var(--brass); font-variant-numeric: tabular-nums; }
+.shop-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.shop-actions .btn { min-height: 36px; padding: 0 14px; font-size: var(--s-2); }
+.cost-list { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 3px; font-size: var(--s-1); }
+.cost-list li { display: flex; justify-content: space-between; gap: 10px; }
+.cost-list .ok { color: #7fd06a; }
+.cost-list .no { color: var(--ember); }
+.tile.worn::after { content: "สวม"; position: absolute; left: 3px; bottom: 2px; font-size: .5625rem; color: var(--verdigris); font-weight: 700; }
+@media (max-width: 900px) { .shop-body { grid-template-columns: 1fr; } }
 .stat-list { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; margin: 16px 0 0; font-size: var(--s-1); }
 .stat-list dt { color: var(--bone-dim); }
 .stat-list dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }

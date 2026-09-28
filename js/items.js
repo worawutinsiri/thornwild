@@ -53,12 +53,41 @@
   I.rarity = function (item) { return TW.RARITY[item.rarity]; };
   I.slot = function (id) { return TW.SLOTS.filter(function (s) { return s.id === id; })[0]; };
 
+  /* +N upgrades scale the main and second line. */
+  I.plusMult = function (item) { return 1 + TW.UPGRADE.perLevel * (item.plus || 0); };
+  I.displayName = function (item) { return item.name + (item.plus ? ' +' + item.plus : ''); };
   /* Every stat line on an item, main first. */
   I.lines = function (item) {
-    var out = [{ stat: item.main.stat, value: item.main.value, main: true }];
-    if (item.second) out.push({ stat: item.second.stat, value: item.second.value });
+    var pm = I.plusMult(item), plus = item.plus || 0;
+    /* percentage growth, but never less than +1 per level on integer stats so low-level gear still moves */
+    var up = function (stat, base) {
+      var v = I.round(stat, base * pm), L = TW.STAT_LABELS[stat];
+      if (plus && !(L && L.dec)) v = Math.max(v, I.round(stat, base) + plus);
+      return v;
+    };
+    var out = [{ stat: item.main.stat, value: up(item.main.stat, item.main.value), main: true }];
+    if (item.second) out.push({ stat: item.second.stat, value: up(item.second.stat, item.second.value) });
     item.affixes.forEach(function (a) { out.push({ stat: a.stat, value: a.value }); });
     return out;
+  };
+  /* Sell price at the merchant. */
+  I.value = function (item) {
+    var rm = [1, 2, 4, 8, 16][item.rarity] || 1;
+    return Math.round((6 + item.ilvl * 3) * rm * (1 + 0.25 * (item.plus || 0)));
+  };
+  /* What the next upgrade level costs, or null at max. */
+  I.upgradeCost = function (item) {
+    var U = TW.UPGRADE, next = (item.plus || 0) + 1;
+    if (next > U.max) return null;
+    var mats = {};
+    mats[U.material[item.slot]] = U.matPerLevel * next;
+    if (next === U.heartAt) mats.heart = 1;
+    return { next: next, gold: Math.round(U.gold * next * (1 + item.ilvl / 5)), mats: mats };
+  };
+  I.canUpgrade = function (item, gold, materials) {
+    var c = I.upgradeCost(item);
+    if (!c || gold < c.gold) return false;
+    return Object.keys(c.mats).every(function (k) { return (materials[k] || 0) >= c.mats[k]; });
   };
   /* Stat totals for one item, keyed by stat id. */
   I.totals = function (item) {

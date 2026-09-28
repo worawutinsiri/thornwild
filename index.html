@@ -150,6 +150,8 @@
           <p class="bag-title attrs-title">แต้มคุณสมบัติ <span id="attr-points">เหลือ 0</span></p>
           <div class="attrs" id="attrs"></div>
           <dl class="stat-list" id="stat-list"></dl>
+          <p class="bag-title attrs-title">วัตถุดิบ</p>
+          <div class="mats" id="materials"></div>
         </div>
         <div class="bag-col">
           <p class="bag-title">กระเป๋า <span id="bag-count">0/20</span></p>
@@ -157,6 +159,49 @@
           <p class="bag-hint">คลิกของเพื่อดูรายละเอียดและเทียบกับที่สวมอยู่ · เดินทับของที่ตกบนพื้นเพื่อเก็บ</p>
         </div>
         <aside class="item-card" id="item-card"><p class="card-empty">เลือกของในกระเป๋าหรือช่องสวมใส่เพื่อดูรายละเอียด</p></aside>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ SHOP & FORGE PANELS ============ -->
+  <section class="panel" id="shop" hidden aria-label="ร้านค้า">
+    <div class="panel-sheet">
+      <header class="panel-top">
+        <div><p class="eyebrow">แผงตลาดมอสเวล</p><h2 id="shop-title">มารา · พ่อค้าเร่</h2><p class="shop-greet" id="shop-greet"></p></div>
+        <div class="panel-gold">เหรียญ <b id="shop-gold">0</b><button class="btn btn-ghost" type="button" data-act="close">ปิด <kbd>Esc</kbd></button></div>
+      </header>
+      <div class="panel-body shop-body">
+        <div class="shop-col">
+          <p class="bag-title">ซื้อ</p>
+          <div class="offers" id="shop-offers"></div>
+        </div>
+        <div class="bag-col">
+          <p class="bag-title">ขายของจากกระเป๋า <span id="shop-count"></span></p>
+          <div class="bag-grid" id="shop-grid"></div>
+          <div class="shop-actions" id="shop-actions"></div>
+        </div>
+        <aside class="item-card" id="shop-card"><p class="card-empty">เลือกของในกระเป๋าเพื่อดูราคารับซื้อ</p></aside>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel" id="smith" hidden aria-label="โรงตีเหล็ก">
+    <div class="panel-sheet">
+      <header class="panel-top">
+        <div><p class="eyebrow">โรงตีเหล็กมอสเวล</p><h2 id="smith-title">ก็อธ · ช่างตีเหล็ก</h2><p class="shop-greet" id="smith-greet"></p></div>
+        <div class="panel-gold">เหรียญ <b id="smith-gold">0</b><button class="btn btn-ghost" type="button" data-act="close">ปิด <kbd>Esc</kbd></button></div>
+      </header>
+      <div class="panel-body shop-body">
+        <div class="shop-col">
+          <p class="bag-title">วัตถุดิบที่มี</p>
+          <div class="mats" id="smith-mats"></div>
+          <p class="bag-hint">วัตถุดิบตกจากอสูร: เมือกจากสไลม์ เขี้ยวจากหมาป่า เหล็กจากก็อบลิน ผงจากเห็ดสปอร์ หัวใจจากธอร์นฮาร์ต</p>
+        </div>
+        <div class="bag-col">
+          <p class="bag-title">เลือกของที่จะตีบวก</p>
+          <div class="bag-grid" id="smith-grid"></div>
+        </div>
+        <aside class="item-card" id="smith-card"><p class="card-empty">เลือกของที่สวมอยู่หรือในกระเป๋า</p></aside>
       </div>
     </div>
   </section>
@@ -175,7 +220,7 @@
         <dt><kbd>F</kbd></dt><dd>ดื่มยาฟื้นพลัง (ฟื้น 40% ของพลังชีวิต)</dd>
         <dt><kbd>I</kbd> / <kbd>C</kbd></dt><dd>หน้าตัวละคร: ลงแต้มคุณสมบัติ (3 แต้มต่อเลเวล) สวมอุปกรณ์ และกระเป๋า · ของที่อสูรทิ้งจะเป็นลำแสงสีตามความหายาก เดินทับเพื่อเก็บ</dd>
         <dt><kbd>K</kbd></dt><dd>ต้นไม้ทักษะ: 1 แต้มต่อเลเวล ปลดล็อกอัปเกรดสกิลตามลำดับใน 3 สายของอาชีพ</dd>
-        <dt><kbd>Space</kbd></dt><dd>คุยกับหัวหน้ากิลด์ที่กระดานประกาศ เพื่อรับและส่งมอบประกาศล่า · ที่หินเวทที่ปลุกแล้ว = เปิดเดินทางด่วนไปหินอื่นที่เคยปลุก (เดินเข้าใกล้หินเพื่อปลุก)</dd>
+        <dt><kbd>Space</kbd></dt><dd>คุยกับชาวบ้านที่อยู่ใกล้: หัวหน้ากิลด์ (รับ/ส่งประกาศล่า) · พ่อค้าที่แผงตลาด (ซื้อยา ขายของ ต้มยาจากเมือกสไลม์) · ช่างตีเหล็ก (ตีบวกอุปกรณ์ +1…+5 ด้วยเหรียญและวัตถุดิบ) · ที่หินเวทที่ปลุกแล้ว = เดินทางด่วน</dd>
         <dt>ลากเมาส์กลาง · <kbd>Q</kbd><kbd>E</kbd></dt><dd>หมุนกล้อง</dd>
         <dt>ล้อเมาส์</dt><dd>ซูมเข้า–ออก</dd>
         <dt><kbd>Esc</kbd></dt><dd>พักเกม</dd>

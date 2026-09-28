@@ -143,6 +143,26 @@ TW.NPC = {
   active: 'ยังล่าไม่ครบนี่ กลับไปให้เสร็จก่อน แล้วค่อยมารับรางวัล',
   idle: 'ป่าสงบลงแล้วเพราะเจ้า แต่อสูรจะกลับมาเสมอ ล่าต่อได้ตามสบาย',
 };
+/* Everyone you can talk to in the village. role decides what Space does: guild = bounties, merchant = shop, smith = upgrades. */
+TW.NPCS = [
+  Object.assign({ role: 'guild' }, TW.NPC),
+  { id: 'mara', role: 'merchant', name: 'มารา', title: 'พ่อค้าเร่', x: 13.2, z: 146.8, facing: -1.3, talkRange: 3.4, greet: 'ของดีราคาเบา ยาสดจากหม้อ ของเก่ามีเท่าไหร่รับซื้อหมด' },
+  { id: 'goth', role: 'smith', name: 'ก็อธ', title: 'ช่างตีเหล็ก', x: 11.5, z: 140.5, facing: -2.2, talkRange: 3.4, greet: 'เอาของมา ข้าตีให้แข็งขึ้นได้ ถ้ามีวัตถุดิบพอ' },
+];
+
+/* Crafting materials dropped by monsters (35% per kill, elites give 2, the boss always drops its heart). */
+TW.MATERIALS = [
+  { id: 'jelly', th: 'เมือกสไลม์', from: 'slime', color: '#86b25a' },
+  { id: 'fang', th: 'เขี้ยวหมาป่า', from: 'wolf', color: '#b5b09a' },
+  { id: 'iron', th: 'เศษเหล็กก็อบลิน', from: 'goblin', color: '#9a9a92' },
+  { id: 'dust', th: 'ผงสปอร์', from: 'spore', color: '#c77fb5' },
+  { id: 'heart', th: 'หัวใจหนาม', from: 'boss', color: '#ff9a3c' },
+];
+TW.MATERIAL_DROP = 0.35;
+TW.SHOP = { potionPrice: 25, brewJelly: 3 };
+/* Upgrades: +1…+5, each level adds perLevel to the item's main and second stat. Always succeeds.
+   Cost: gold × level × (1 + ilvl/5) plus matPerLevel × level of the slot's material; the last level also needs a thorn heart. */
+TW.UPGRADE = { max: 5, perLevel: 0.08, gold: 30, matPerLevel: 3, material: { weapon: 'iron', armor: 'fang', trinket: 'dust' }, heartAt: 5 };
 
 TW.HUNTER_NAMES = ['คีริน', 'ไลร่า', 'ธาวิน', 'เซเรน', 'โรวาน', 'อลิซา', 'กาเรธ', 'นภัส'];
 

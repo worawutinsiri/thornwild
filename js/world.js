@@ -635,6 +635,20 @@
     var railGeo = new T.BoxGeometry(2.2, 0.1, 0.08);
     scene.add(instanced(railGeo, H.mk(0x6b4a2e), rails));
 
+    /* the smith's corner: anvil on a stump, a small forge with a glowing mouth */
+    var ax2 = 13.6, az2 = 141.6, ay2 = at(ax2, az2);
+    H.part(H.cyl(0.42, 0.52, 0.7, 7), woodM, ax2, ay2 + 0.35, az2, g);
+    var anvil = H.part(H.box(0.95, 0.32, 0.4), H.mk(0x8a8a86, { metalness: 0.6, roughness: 0.4 }), ax2, ay2 + 0.86, az2, g);
+    anvil.rotation.y = 0.5;
+    var horn = H.part(H.cone(0.16, 0.5, 6), H.mk(0x8a8a86, { metalness: 0.6, roughness: 0.4 }), ax2 + Math.cos(0.5) * 0.65, ay2 + 0.86, az2 - Math.sin(0.5) * 0.65, g);
+    horn.rotation.z = -Math.PI / 2; horn.rotation.y = -0.5;
+    addCollider(ax2, az2, 0.8);
+    var fx2 = 15.8, fz2 = 139.2, fy2 = at(fx2, fz2);
+    H.part(H.box(1.4, 1.1, 1.2), H.mk(0x6f6a5e), fx2, fy2 + 0.55, fz2, g);
+    H.part(H.box(0.6, 0.45, 0.1), H.glow(0xff8a3c, 1.4), fx2 - 0.72, fy2 + 0.5, fz2, g);
+    H.part(H.box(0.5, 1.6, 0.5), H.mk(0x6f6a5e), fx2 + 0.3, fy2 + 1.9, fz2 - 0.2, g);
+    addCollider(fx2, fz2, 1.1);
+
     /* hay, barrels, crates */
     var hayM = H.mk(0xd9b25a), crateM = H.mk(0x7a5a3a);
     [[-13, 147], [-12.2, 148.6]].forEach(function (p) { H.part(H.cyl(0.75, 0.75, 1.1, 9), hayM, p[0], at(p[0], p[1]) + 0.75, p[1], g).rotation.z = Math.PI / 2; });

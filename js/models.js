@@ -300,14 +300,34 @@
   M.hero = function (id) { var h = finish(HEROES[id]()); h.kind = 'hero'; h.cls = id; return h; };
   M.monster = function (type) { var h = finish(MONSTERS[type]()); h.kind = type; return h; };
   /* Guild master Orwin: verdigris tabard with a brass stripe, flat cap, grey beard, a scroll in hand. */
-  M.npc = function () {
-    var h = humanoid({ skin: 0xd9b08c, torso: 0x2f6f61, legs: 0x4a4035, arms: 0x2f6f61, belt: 0xd4a64a, boots: 0x3a2c22 });
-    part(box(0.44, 0.7, 0.04), mk(0xd4a64a, { metalness: 0.4, roughness: 0.5 }), 0, 1.2, 0.22, h.body);
-    part(box(0.3, 0.24, 0.16), mk(0xcfc6b8), 0, 0.02, 0.22, h.head);
-    part(cyl(0.3, 0.33, 0.14, 10), mk(0x4a3526), 0, 0.5, 0, h.head);
-    part(cyl(0.34, 0.34, 0.03, 10), mk(0x4a3526), 0, 0.44, 0.06, h.head);
-    var scroll = part(cyl(0.07, 0.07, 0.5, 6), mk(0xe8dcc0), 0, 0, 0.1, h.handL);
-    scroll.rotation.x = Math.PI / 2;
+  M.npc = function (role) {
+    var h;
+    if (role === 'merchant') {
+      /* Mara: leather vest, cream apron, wide straw hat, coin pouch */
+      h = humanoid({ skin: 0xd9b08c, torso: 0x8a5a3a, legs: 0x5a4632, arms: 0xd9ccb0, belt: 0x4a3526, boots: 0x3a2c22 });
+      part(box(0.5, 0.72, 0.04), mk(0xd9ccb0), 0, 1.1, 0.22, h.body);
+      part(cyl(0.6, 0.6, 0.05, 12), mk(0xc9a86a), 0, 0.42, 0, h.head);
+      part(cyl(0.27, 0.3, 0.24, 10), mk(0xc9a86a), 0, 0.56, 0, h.head);
+      part(sph(0.12, 8, 6), mk(0xd4a64a, { metalness: 0.5, roughness: 0.4 }), 0.3, 1.02, 0.22, h.body);
+    } else if (role === 'smith') {
+      /* Goth: bald, dark beard, heavy leather apron, hammer */
+      h = humanoid({ skin: 0xc99a74, torso: 0x3a3a3a, legs: 0x33302c, arms: 0xc99a74, belt: 0x4a3526, boots: 0x2b241c });
+      part(box(0.56, 0.84, 0.05), mk(0x4a3526), 0, 1.1, 0.22, h.body);
+      part(box(0.32, 0.26, 0.16), mk(0x3a2c22), 0, 0.0, 0.22, h.head);
+      var hammer = pivot(0, 0, 0, h.handR);
+      hammer.rotation.x = 1.4;
+      part(cyl(0.035, 0.04, 0.7, 6), mk(0x5a3e28), 0, 0.15, 0, hammer);
+      part(box(0.3, 0.16, 0.16), steel(), 0, 0.52, 0, hammer);
+    } else {
+      /* Orwin: verdigris tabard with a brass stripe, flat cap, grey beard, a scroll in hand */
+      h = humanoid({ skin: 0xd9b08c, torso: 0x2f6f61, legs: 0x4a4035, arms: 0x2f6f61, belt: 0xd4a64a, boots: 0x3a2c22 });
+      part(box(0.44, 0.7, 0.04), mk(0xd4a64a, { metalness: 0.4, roughness: 0.5 }), 0, 1.2, 0.22, h.body);
+      part(box(0.3, 0.24, 0.16), mk(0xcfc6b8), 0, 0.02, 0.22, h.head);
+      part(cyl(0.3, 0.33, 0.14, 10), mk(0x4a3526), 0, 0.5, 0, h.head);
+      part(cyl(0.34, 0.34, 0.03, 10), mk(0x4a3526), 0, 0.44, 0.06, h.head);
+      var scroll = part(cyl(0.07, 0.07, 0.5, 6), mk(0xe8dcc0), 0, 0, 0.1, h.handL);
+      scroll.rotation.x = Math.PI / 2;
+    }
     var hh = finish(h);
     hh.kind = 'npc';
     return hh;
