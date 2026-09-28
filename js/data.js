@@ -203,6 +203,8 @@ TW.STAT_LABELS = {
   mpRegen: { th: 'ฟื้นพลังเวท/วิ', dec: true }, lifesteal: { th: 'ดูดเลือด', pct: true }, goldPct: { th: 'เหรียญที่ได้', pct: true }, potionPct: { th: 'ประสิทธิภาพยา', pct: true },
 };
 TW.BAG_SIZE = 20;
+/* Universal dodge roll: distance, speed (m/s → ~0.35 s of i-frames), cooldown */
+TW.DODGE = { dist: 5.5, speed: 16, cd: 1.2 };
 TW.ITEM_DROP = 0.22; /* chance per kill; elites and bosses roll more and better */
 
 TW.expToNext = function (level) { return 50 + (level - 1) * 45; };

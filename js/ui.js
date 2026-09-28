@@ -35,6 +35,7 @@
     armor: '<path d="M9 3l3 2 3-2 4 3-2 4-2-1v12H9V9L7 10 3 6z"/>',
     ring: '<circle cx="12" cy="14" r="6"/><path d="M9 4h6l2 3H7z"/>',
     bag: '<path d="M6 8h12l1 12H5z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/>',
+    roll: '<path d="M20 12a8 8 0 1 1-2.3-5.7"/><path d="M20 4v4h-4"/>',
   };
   function svg(name) {
     return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + (ICONS[name] || '') + '</svg>';
@@ -216,16 +217,19 @@
     });
     h += '<button type="button" class="slot potion" data-slot="potion" aria-label="ยาฟื้นพลัง"><span class="key">F</span>' + svg('potion') +
       '<span class="mp" id="potion-count">0</span><span class="cd" style="--p:0"></span><span class="cdt"></span></button>';
+    h += '<button type="button" class="slot dodge" data-slot="dodge" aria-label="กลิ้งหลบ"><span class="key">Shift</span>' + svg('roll') +
+      '<span class="cd" style="--p:0"></span><span class="cdt"></span></button>';
     var bar = $('skillbar');
     bar.innerHTML = h;
     slots = Array.prototype.map.call(bar.querySelectorAll('.slot'), function (el) {
-      return { el: el, cd: el.querySelector('.cd'), cdt: el.querySelector('.cdt'), p: -1, t: '', nomp: false, active: false, ready: true };
+      return { el: el, kind: el.dataset.slot, cd: el.querySelector('.cd'), cdt: el.querySelector('.cdt'), p: -1, t: '', nomp: false, active: false, ready: true };
     });
     slots.forEach(function (s) {
       var el = s.el, key = el.dataset.slot;
       el.addEventListener('pointerdown', function (e) {
         e.preventDefault();
         if (key === 'potion') emit('potion');
+        else if (key === 'dodge') emit('dodge');
         else if (key === '0') emit('attackHold', true);
         else emit('skill', +key);
       });
@@ -251,9 +255,10 @@
     var low = p.hp / p.maxHp < 0.3;
     if (last.low !== low) { last.low = low; $('hud-player').classList.toggle('low', low); }
     for (var i = 0; i < slots.length; i++) {
-      var s = slots[i], cd, total, nomp, active = false;
-      if (i < 4) { cd = p.cds[i]; total = p.cls.skills[i].cd; nomp = p.mp < p.cls.skills[i].mp; active = !!info.active[p.cls.skills[i].id]; }
-      else { cd = p.potionCd; total = 1.5; nomp = p.potions <= 0; }
+      var s = slots[i], cd, total, nomp = false, active = false;
+      if (s.kind === 'potion') { cd = p.potionCd; total = 1.5; nomp = p.potions <= 0; }
+      else if (s.kind === 'dodge') { cd = p.dodgeCd; total = TW.DODGE.cd; }
+      else { cd = p.cds[i]; total = p.cls.skills[i].cd; nomp = p.mp < p.cls.skills[i].mp; active = !!info.active[p.cls.skills[i].id]; }
       var pr = total > 0 ? Math.round(cd / total * 50) / 50 : 0;
       if (s.p !== pr) { s.p = pr; s.cd.style.setProperty('--p', pr); }
       var t = cd > 0.05 ? (cd < 1 ? cd.toFixed(1) : Math.ceil(cd)) : '';

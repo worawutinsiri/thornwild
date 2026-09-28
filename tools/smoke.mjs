@@ -246,6 +246,14 @@ try {
       expect(p.cds[0] > 0 && !p.moveTo, 'right click fires the basic attack and stops walking');
       scene.dispatch('pointerup', { button: 2, pointerType: 'mouse', pointerId: 1, clientX: 640, clientY: 200 });
       G.teleport(2, 142); frame(2, 'reset');
+      /* dodge roll: Shift dashes with i-frames and starts a cooldown */
+      key('KeyW'); key('ShiftLeft'); frame(1, 'dodge');
+      expect(!!p.dash && p.dodgeCd > 0, 'Shift starts a dodge roll with a cooldown');
+      const rollFrom = p.pos.z; frame(25, 'rolling'); key('KeyW', true);
+      expect(!p.dash && rollFrom - p.pos.z > 4, 'the roll carried the hunter ~5 m (' + (rollFrom - p.pos.z).toFixed(1) + ')');
+      key('ShiftLeft'); frame(1, 'dodge again');
+      expect(!p.dash, 'a second Shift during cooldown does nothing');
+      G.teleport(2, 142); frame(80, 'cooldown');
       G.state.debugAuto = true;
       key('KeyW'); frame(240, 'play ' + c.id); key('KeyW', true);
       expect(p.pos.z < 140, c.id + ' walked north (z=' + p.pos.z.toFixed(1) + ')');

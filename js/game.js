@@ -53,7 +53,7 @@
   var VILLAGE = TW.ZONE_BY_ID.village;
   var SPAWN = { x: World.PREVIEW.x, z: World.PREVIEW.z };
 
-  var G = { mode: 'title', paused: false, time: 0, victoryShown: false, quest: { idx: 0, progress: 0, state: 'available' }, stats: { kills: 0, start: 0 }, cls: 'warrior', previewYaw: 0, zone: null, dialogOpen: false, panel: null, invSel: null };
+  var G = { mode: 'title', paused: false, time: 0, victoryShown: false, quest: { idx: 0, progress: 0, state: 'available' }, stats: { kills: 0, start: 0 }, cls: 'warrior', previewYaw: 0, zone: null, dialogOpen: false, panel: null, invSel: null, hitstop: 0 };
   var cam = { yaw: 0, pitch: 0.95, dist: 22, shake: 0, target: new T.Vector3() };
   /* mouse: left = walk to the cursor, right = basic attack toward it, middle drag (or Q/E) = camera */
   var input = { keys: {}, ndc: new T.Vector2(), lDown: false, rDown: false, mDown: false, attackHold: false, lastX: 0, lastY: 0, joy: { x: 0, y: 0, on: false }, touch: false, drag: false, dragId: null, tapX: 0, tapY: 0, tapT: 0, tapMoved: 0 };
@@ -278,7 +278,7 @@
       level: 1, exp: 0, gold: 0, potions: 3, hp: 0, mp: 0, maxHp: 0, maxMp: 0, atk: 0, def: 0, speed: cls.base.speed, crit: cls.base.crit,
       cds: [0, 0, 0, 0], potionCd: 0, anim: { walk: 0, move: 0, act: null }, dash: null, hopY: 0, buffs: {}, lastHurt: -99, dead: false, deathT: 0,
       radius: 0.6, invuln: 0, knock: null, hurtFlash: 0,
-      inventory: [], equip: { weapon: null, armor: null, trinket: null }, bonus: TW.Items.bonus({}),
+      inventory: [], equip: { weapon: null, armor: null, trinket: null }, bonus: TW.Items.bonus({}), dodgeCd: 0,
     };
     p.pos.y = World.heightAt(p.pos.x, p.pos.z);
     recalc(p, true);
@@ -345,6 +345,7 @@
     }
     for (var i = 0; i < 4; i++) p.cds[i] = Math.max(0, p.cds[i] - dt);
     p.potionCd = Math.max(0, p.potionCd - dt);
+    p.dodgeCd = Math.max(0, p.dodgeCd - dt);
     p.invuln = Math.max(0, p.invuln - dt);
     for (var k in p.buffs) { p.buffs[k].t -= dt; if (p.buffs[k].t <= 0) endBuff(p, k); }
     var inVillage = dist2(p.pos, VILLAGE) < VILLAGE.r;
@@ -441,6 +442,7 @@
         case 'stab': var w = Math.sin(e * Math.PI); armR = -1.5 * w; armL = -1.5 * (1 - w); twist = (0.5 - e) * 0.5; break;
         case 'leap': armR = 1.0; armL = 1.0; lean = -0.3; break;
         case 'wave': armR = -2.7 + Math.sin(e * Math.PI * 4) * 0.35; armRz = -0.3; break;
+        case 'roll': lean = e * TAU; armL = armR = -1.3; armLz = 0.5; armRz = -0.5; bodyY = 0.35 * Math.sin(e * Math.PI); break;
       }
       if (e >= 1) a.act = null;
     }
@@ -599,6 +601,25 @@
     UI.floater(p.pos.x, p.pos.y + 2.4, p.pos.z, '+' + heal, 'heal');
     Particles.burst(p.pos.x, p.pos.y + 1, p.pos.z, 0x7fd6c0, 30, 3, 0.8, -2, 2);
   }
+  /* Universal dodge roll: toward the movement input, else toward the walk target, else where the hunter faces. */
+  function dodge() {
+    var p = player, D = TW.DODGE;
+    if (!p || p.dead || G.paused || G.panel || G.mode !== 'game' || G.dialogOpen || p.dash || p.dodgeCd > 0) return;
+    var keys = input.keys;
+    var fwd = (keys.KeyW || keys.ArrowUp ? 1 : 0) - (keys.KeyS || keys.ArrowDown ? 1 : 0);
+    var str = (keys.KeyD || keys.ArrowRight ? 1 : 0) - (keys.KeyA || keys.ArrowLeft ? 1 : 0);
+    if (input.joy.on) { fwd = -input.joy.y; str = input.joy.x; }
+    var dx = -Math.sin(cam.yaw) * fwd + Math.cos(cam.yaw) * str, dz = -Math.cos(cam.yaw) * fwd - Math.sin(cam.yaw) * str;
+    var l = Math.sqrt(dx * dx + dz * dz);
+    if (l < 0.08 && p.moveTo) { dx = p.moveTo.x - p.pos.x; dz = p.moveTo.z - p.pos.z; l = Math.sqrt(dx * dx + dz * dz); }
+    if (l < 0.08) { dx = Math.sin(p.facing); dz = Math.cos(p.facing); l = 1; }
+    dx /= l; dz /= l;
+    p.dash = { dx: dx, dz: dz, left: D.dist, total: D.dist, speed: D.speed, hit: [], noHit: true, color: 0xebe2c9 };
+    p.dodgeCd = D.cd;
+    p.targetFacing = p.facing = Math.atan2(dx, dz);
+    act(p, 'roll', D.dist / D.speed);
+    Particles.burst(p.pos.x, p.pos.y + 0.3, p.pos.z, 0x9a948a, 14, 3, 0.5, 2, 1);
+  }
 
   /* ---- damage ---- */
   function hitArc(p, dir, range, arcDeg, mult, opts) {
@@ -636,6 +657,7 @@
     m.flash = 0.12;
     m.lastHit = G.time;
     if (p.bonus.lifesteal > 0 && p.hp < p.maxHp) p.hp = Math.min(p.maxHp, p.hp + dmg * p.bonus.lifesteal / 100);
+    if (crit) G.hitstop = Math.max(G.hitstop, 0.04);
     UI.floater(m.pos.x + rand(-0.4, 0.4), m.pos.y + m.def.height * 0.85, m.pos.z, dmg, crit ? 'crit' : 'hit');
     Particles.burst(m.pos.x, m.pos.y + m.def.height * 0.5, m.pos.z, crit ? 0xd4a64a : 0xebe2c9, crit ? 18 : 8, 4, 0.4, 5);
     if (opts.slow) m.slow = { t: opts.slow.t, f: opts.slow.f };
@@ -787,6 +809,8 @@
     m.attackKind = chooseAttack(m, dp);
     m.windMax = m.windT = WINDUP[m.attackKind] || m.def.windup;
     m.state = 'windup';
+    /* ordinary monsters telegraph with a red ring under them (bosses paint the real hit area below) */
+    if (!m.def.boss) fxRing(m.pos.x, m.pos.y, m.pos.z, m.def.radius + 1.1, 0xe4683a, m.windT);
     if (m.attackKind === 'smash') { var fx = m.pos.x + Math.sin(m.facing) * 3.8, fz = m.pos.z + Math.cos(m.facing) * 3.8; m.tele = { x: fx, z: fz, r: 4.3 }; telegraph(fx, fz, 4.3, m.windT, 0xe4683a); }
     else if (m.attackKind === 'slam') { m.tele = { x: m.pos.x, z: m.pos.z, r: 9 }; telegraph(m.pos.x, m.pos.z, 9, m.windT, 0xe4683a); }
     else if (m.attackKind === 'nova') { telegraph(m.pos.x, m.pos.z, 5.5, m.windT, 0xd4a64a); }
@@ -847,6 +871,7 @@
     m.stun = 0; m.slow = null; m.poison = null;
     if (m.bar) m.bar.g.visible = false;
     G.stats.kills++;
+    G.hitstop = Math.max(G.hitstop, m.def.boss ? 0.22 : 0.06);
     gainExp(m.def.exp);
     var gold = Math.round(randi(m.def.gold[0], m.def.gold[1]) * (1 + player.bonus.goldPct / 100));
     player.gold += gold;
@@ -901,12 +926,13 @@
     }
     var slowF = 1;
     if (m.slow) { m.slow.t -= dt; slowF = m.slow.f; if (m.slow.t <= 0) m.slow = null; }
-    var tint = m.flash > 0 ? 'flash' : (m.slow ? 'frost' : (m.poison ? 'poison' : (m.enraged ? 'rage' : '')));
+    var tint = m.flash > 0 ? 'flash' : (m.slow ? 'frost' : (m.poison ? 'poison' : (m.state === 'windup' && !def.boss ? 'warn' : (m.enraged ? 'rage' : ''))));
     if (tint !== m.tint) {
       m.tint = tint;
       if (tint === 'flash') Models.tint(md, 0xffffff, 1.4);
       else if (tint === 'frost') Models.tint(md, 0x6fb8e0, 0.7);
       else if (tint === 'poison') Models.tint(md, 0x6fbf3a, 0.5);
+      else if (tint === 'warn') Models.tint(md, 0xffb070, 0.55);
       else if (tint === 'rage') Models.tint(md, 0xa02a10, 0.35);
       else Models.tint(md, 0, 0);
     }
@@ -1528,6 +1554,7 @@
       if (e.code === 'KeyI') { toggleInventory(); return; }
       if (G.paused || G.panel || player.dead) return;
       if (e.code === 'Space') { if (G.dialogOpen) closeDialog(); else openDialog(); return; }
+      if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') { dodge(); return; }
       if (e.code === 'Digit1') useSkill(1);
       else if (e.code === 'Digit2') useSkill(2);
       else if (e.code === 'Digit3') useSkill(3);
@@ -1620,6 +1647,7 @@
   UI.on('talk', function () { if (G.dialogOpen) closeDialog(); else openDialog(); });
   UI.on('dialog', dialogAction);
   UI.on('inventory', function (on) { toggleInventory(on === false ? false : undefined); });
+  UI.on('dodge', dodge);
   UI.on('inv-select', function (uid) { G.invSel = { uid: uid }; renderInventory(); });
   UI.on('inv-select-equip', function (slot) { G.invSel = { slot: slot }; renderInventory(); });
   UI.on('inv-act', function (act, id) { if (act === 'equip') equipItem(id); else if (act === 'unequip') unequipItem(id); else if (act === 'drop') discardItem(id); });
@@ -1667,6 +1695,8 @@
     var dt = Math.min(0.05, (now - last) / 1000);
     last = now;
     if (G.paused || G.panel) dt = 0;
+    /* hit-stop: a few frozen frames on crits and kills give hits weight */
+    if (G.hitstop > 0) { G.hitstop -= dt; dt = 0; }
     G.time += dt;
     if (dt > 0) {
       updateTimers(dt);
@@ -1753,6 +1783,7 @@
     inventory: function () { return player ? player.inventory : []; },
     equip: function () { return player ? player.equip : {}; },
     debugDrop: function (x, z, ilvl, rarity) { spawnItemPickup(TW.Items.roll(ilvl || 3, 0, null, rarity), x, z); },
+    dodge: dodge,
     forceQuestComplete: function () { var q = TW.QUESTS[G.quest.idx]; if (q && G.quest.state === 'active') { G.quest.progress = q.count - 1; questProgress(q.target); } },
     forceDeath: function () { if (player && !player.dead) { player.hp = 0; playerDie(); } },
     forceBossKill: function () { for (var i = 0; i < monsters.length; i++) if (monsters[i].def.boss && monsters[i].alive) { monsters[i].hp = 0; killMonster(monsters[i]); } },
