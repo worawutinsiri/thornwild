@@ -132,10 +132,18 @@
   <section class="panel" id="inv" hidden aria-label="กระเป๋าและอุปกรณ์">
     <div class="panel-sheet">
       <header class="panel-top">
-        <div><p class="eyebrow">ใบอนุญาตนักล่า</p><h2>ตัวละคร · อุปกรณ์ · กระเป๋า</h2></div>
-        <button id="btn-inv-close" class="btn btn-ghost" type="button">ปิด <kbd>I</kbd></button>
+        <div><p class="eyebrow">ใบอนุญาตนักล่า</p><h2>ตัวละคร · ทักษะ · อุปกรณ์</h2></div>
+        <button id="btn-inv-close" class="btn btn-ghost" type="button">ปิด <kbd>Esc</kbd></button>
       </header>
-      <div class="panel-body">
+      <div class="panel-tabs" role="tablist">
+        <button type="button" class="tab active" data-tab="char" role="tab">ตัวละครและอุปกรณ์ <kbd>I</kbd></button>
+        <button type="button" class="tab" data-tab="skills" role="tab">ต้นไม้ทักษะ <kbd>K</kbd></button>
+      </div>
+      <div class="skills-tab" id="tab-skills" hidden>
+        <p class="bag-title attrs-title">แต้มทักษะ <span id="skill-points">เหลือ 0</span></p>
+        <div class="tree" id="skill-tree"></div>
+      </div>
+      <div class="panel-body" id="tab-char">
         <div class="equip-col">
           <p class="bag-title">สวมใส่อยู่</p>
           <div class="equip-slots" id="equip-slots"></div>
@@ -166,6 +174,7 @@
         <dt><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></dt><dd>เดินด้วยคีย์บอร์ดก็ได้ (หรือปุ่มลูกศร)</dd>
         <dt><kbd>F</kbd></dt><dd>ดื่มยาฟื้นพลัง (ฟื้น 40% ของพลังชีวิต)</dd>
         <dt><kbd>I</kbd> / <kbd>C</kbd></dt><dd>หน้าตัวละคร: ลงแต้มคุณสมบัติ (3 แต้มต่อเลเวล) สวมอุปกรณ์ และกระเป๋า · ของที่อสูรทิ้งจะเป็นลำแสงสีตามความหายาก เดินทับเพื่อเก็บ</dd>
+        <dt><kbd>K</kbd></dt><dd>ต้นไม้ทักษะ: 1 แต้มต่อเลเวล ปลดล็อกอัปเกรดสกิลตามลำดับใน 3 สายของอาชีพ</dd>
         <dt><kbd>Space</kbd></dt><dd>คุยกับหัวหน้ากิลด์ที่กระดานประกาศ เพื่อรับและส่งมอบประกาศล่า · ที่หินเวทที่ปลุกแล้ว = เปิดเดินทางด่วนไปหินอื่นที่เคยปลุก (เดินเข้าใกล้หินเพื่อปลุก)</dd>
         <dt>ลากเมาส์กลาง · <kbd>Q</kbd><kbd>E</kbd></dt><dd>หมุนกล้อง</dd>
         <dt>ล้อเมาส์</dt><dd>ซูมเข้า–ออก</dd>
@@ -193,6 +202,7 @@
         <dt><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></dt><dd>เดินด้วยคีย์บอร์ด</dd>
         <dt><kbd>F</kbd></dt><dd>ยาฟื้นพลัง</dd>
         <dt><kbd>I</kbd> / <kbd>C</kbd></dt><dd>ตัวละคร · แต้ม · อุปกรณ์ · กระเป๋า</dd>
+        <dt><kbd>K</kbd></dt><dd>ต้นไม้ทักษะ</dd>
         <dt><kbd>Space</kbd></dt><dd>คุยกับหัวหน้ากิลด์ รับ/ส่งประกาศ</dd>
         <dt>ลากเมาส์กลาง · <kbd>Q</kbd><kbd>E</kbd></dt><dd>หมุนกล้อง</dd>
       </dl>

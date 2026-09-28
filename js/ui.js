@@ -124,6 +124,10 @@
     $('btn-inv').addEventListener('click', function () { emit('inventory'); });
     $('btn-inv-close').addEventListener('click', function () { emit('inventory', false); });
     $('inv').addEventListener('click', function (e) {
+      var tab = e.target.closest('[data-tab]');
+      if (tab) { emit('panel-tab', tab.dataset.tab); return; }
+      var node = e.target.closest('[data-node]');
+      if (node) { emit('inv-act', 'node', node.dataset.node); return; }
       var act = e.target.closest('[data-act]');
       if (act) { if (act.disabled) return; emit('inv-act', act.dataset.act, act.dataset.uid ? +act.dataset.uid : (act.dataset.slot || act.dataset.attr)); return; }
       var tile = e.target.closest('[data-uid]');
@@ -257,7 +261,7 @@
     for (var i = 0; i < slots.length; i++) {
       var s = slots[i], cd, total, nomp = false, active = false;
       if (s.kind === 'potion') { cd = p.potionCd; total = 1.5; nomp = p.potions <= 0; }
-      else if (s.kind === 'dodge') { cd = p.dodgeCd; total = TW.DODGE.cd; }
+      else if (s.kind === 'dodge') { cd = p.dodgeCd; total = p.dodgeCdMax || TW.DODGE.cd; }
       else { cd = p.cds[i]; total = p.cls.skills[i].cd; nomp = p.mp < p.cls.skills[i].mp; active = !!info.active[p.cls.skills[i].id]; }
       var pr = total > 0 ? Math.round(cd / total * 50) / 50 : 0;
       if (s.p !== pr) { s.p = pr; s.cd.style.setProperty('--p', pr); }
@@ -610,6 +614,34 @@
     h += '</div>';
     card.innerHTML = h;
     card.querySelector('.card-name').textContent = it3.name;
+  };
+
+  /* ---------- panel tabs & skill tree ---------- */
+  UI.panelTab = function (tab) {
+    document.querySelectorAll('#inv .tab').forEach(function (b) { b.classList.toggle('active', b.dataset.tab === tab); });
+    $('tab-char').hidden = tab !== 'char';
+    $('tab-skills').hidden = tab !== 'skills';
+  };
+  /* view: { branches:[{th, nodes:[{id, th, desc, state:'unlocked'|'available'|'locked'}]}], points, respecCost, canRespec } */
+  UI.skillTree = function (v) {
+    $('skill-points').textContent = 'เหลือ ' + v.points;
+    var h = '';
+    v.branches.forEach(function (br) {
+      h += '<div class="branch"><h4>' + br.th + '<small>ปลดล็อกจากบนลงล่าง</small></h4>';
+      br.nodes.forEach(function (n, i) {
+        var can = n.state === 'available' && v.points > 0;
+        h += '<div class="node ' + n.state + '"><b>' + (i + 1) + '. ' + n.th + '</b><small>' + n.desc + '</small>' +
+          (n.state === 'unlocked' ? '<span class="state">ปลดล็อกแล้ว</span>' :
+            can ? '<button type="button" class="btn btn-primary" data-node="' + n.id + '">ปลดล็อก (1 แต้ม)</button>' :
+              '<span class="state">' + (n.state === 'available' ? 'ต้องมีแต้มทักษะ' : 'ต้องปลดล็อกโหนดก่อนหน้า') + '</span>') +
+          '</div>';
+      });
+      h += '</div>';
+    });
+    $('skill-tree').innerHTML = h;
+    var foot = document.getElementById('skill-respec');
+    if (!foot) { foot = document.createElement('div'); foot.className = 'respec'; foot.id = 'skill-respec'; $('tab-skills').appendChild(foot); }
+    foot.innerHTML = '<span>ล้างทักษะทั้งหมด ' + v.respecCost + ' เหรียญ</span><button type="button" class="btn btn-ghost" data-act="respec-skills"' + (v.canRespec ? '' : ' disabled') + '>ล้างทักษะ</button>';
   };
 
   TW.UI = UI;

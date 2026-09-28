@@ -241,6 +241,25 @@ try {
       byId.get('inv').dispatch('click', { target: query(byId.get('attrs'), '[data-act="respec"]')[0] }); frame(1, 'respec');
       expect(p.attrs.str === 0 && p.points === 3 && p.gold === 500 - sandbox.TW.RESPEC_COST * p.level, 'respec refunds points for gold');
       expect(JSON.parse(store.get('tw.save.v1')).points === 3, 'points are saved');
+      /* skill tree: K switches tabs, tier 1 unlocks and changes the skill numbers, tier 3 stays locked, respec refunds */
+      p.skillPoints = 2;
+      key('KeyK'); frame(1, 'skills tab');
+      expect(!byId.get('tab-skills').hidden && byId.get('tab-char').hidden && G.state.panelTab === 'skills', 'K switches the open panel to the skill tree');
+      const tree = sandbox.TW.TREES[c.id], first = tree[0].nodes[0], third = tree[0].nodes[2];
+      const skillOf = (id) => c.skills.findIndex((s) => s.id === id);
+      const baseSkill = first.skill ? JSON.stringify(G.eff(skillOf(first.skill))) : null;
+      byId.get('inv').dispatch('click', { target: query(byId.get('skill-tree'), '[data-node="' + first.id + '"]')[0] }); frame(1, 'unlock');
+      expect(p.skills.unlocked[first.id] && p.skillPoints === 1, 'tier-1 node unlocks for one point');
+      if (baseSkill) expect(JSON.stringify(G.eff(skillOf(first.skill))) !== baseSkill, 'the unlocked node changes the effective skill');
+      expect(query(byId.get('skill-tree'), '[data-node="' + third.id + '"]').length === 0, 'tier 3 has no unlock button while tier 2 is locked');
+      G.unlockNode(third.id); frame(1, 'illegal unlock');
+      expect(!p.skills.unlocked[third.id] && p.skillPoints === 1, 'unlocking out of order is refused');
+      p.gold = 500;
+      byId.get('inv').dispatch('click', { target: query(byId.get('tab-skills'), '[data-act="respec-skills"]')[0] }); frame(1, 'respec skills');
+      expect(!p.skills.unlocked[first.id] && p.skillPoints === 2, 'skill respec refunds the point');
+      expect(JSON.parse(store.get('tw.save.v1')).skillPoints === 2, 'skill points are saved');
+      key('KeyI'); frame(1, 'char tab');
+      expect(!byId.get('tab-char').hidden, 'I switches back to the character tab');
       key('KeyI'); frame(2, 'close bag');
       expect(byId.get('inv').hidden && !G.state.panel, 'I closes the inventory');
       /* mouse: left click walks to the cursor, right click attacks */

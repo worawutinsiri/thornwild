@@ -53,7 +53,7 @@
   var VILLAGE = TW.ZONE_BY_ID.village;
   var SPAWN = { x: World.PREVIEW.x, z: World.PREVIEW.z };
 
-  var G = { mode: 'title', paused: false, time: 0, victoryShown: false, quest: { idx: 0, progress: 0, state: 'available' }, stats: { kills: 0, start: 0 }, cls: 'warrior', previewYaw: 0, zone: null, dialogOpen: false, panel: null, invSel: null, hitstop: 0, waystones: {}, dialogKind: '' };
+  var G = { mode: 'title', paused: false, time: 0, victoryShown: false, quest: { idx: 0, progress: 0, state: 'available' }, stats: { kills: 0, start: 0 }, cls: 'warrior', previewYaw: 0, zone: null, dialogOpen: false, panel: null, invSel: null, hitstop: 0, waystones: {}, dialogKind: '', panelTab: 'char' };
   var cam = { yaw: 0, pitch: 0.95, dist: 22, shake: 0, target: new T.Vector3() };
   /* mouse: left = walk to the cursor, right = basic attack toward it, middle drag (or Q/E) = camera */
   var input = { keys: {}, ndc: new T.Vector2(), lDown: false, rDown: false, mDown: false, attackHold: false, lastX: 0, lastY: 0, joy: { x: 0, y: 0, on: false }, touch: false, drag: false, dragId: null, tapX: 0, tapY: 0, tapT: 0, tapMoved: 0 };
@@ -280,6 +280,7 @@
       radius: 0.6, invuln: 0, knock: null, hurtFlash: 0,
       inventory: [], equip: { weapon: null, armor: null, trinket: null }, bonus: TW.Items.bonus({}), dodgeCd: 0,
       attrs: { str: 0, vit: 0, agi: 0, int: 0 }, points: 0, cdr: 0, mpRegenBonus: 0,
+      skills: { unlocked: {} }, skillPoints: 0, flags: {}, critMult: cls.critMult, lifesteal: 0, dodgeCdMax: TW.DODGE.cd,
     };
     p.pos.y = World.heightAt(p.pos.x, p.pos.z);
     recalc(p, true);
@@ -288,16 +289,25 @@
   /* class base + level growth + everything worn. fill = refill hp/mp (level up, respawn) */
   function recalc(p, fill) {
     var b = p.cls.base, g = p.cls.grow, L = p.level - 1, e = p.bonus = TW.Items.bonus(p.equip);
-    var a = { atk: 0, hp: 0, def: 0, crit: 0, speedPct: 0, mp: 0, cdr: 0, mpRegen: 0 };
+    var a = { atk: 0, hp: 0, hpPct: 0, def: 0, crit: 0, speedPct: 0, mp: 0, cdr: 0, mpRegen: 0, lifesteal: 0, critMult: 0, dodgeCd: 0, atkPct: 0 };
     TW.ATTRS.forEach(function (at) { var n = p.attrs[at.id] || 0; Object.keys(at.per).forEach(function (k) { a[k] += at.per[k] * n; }); });
+    /* skill-tree passives and class-wide flags */
+    p.flags = {};
+    nodeList(p).forEach(function (n) {
+      if (n.passive) Object.keys(n.passive).forEach(function (k) { a[k] = (a[k] || 0) + n.passive[k]; });
+      if (n.flag && !n.skill) p.flags[n.flag] = true;
+    });
     var oldMax = p.maxHp || 1, ratio = p.hp / oldMax;
-    p.maxHp = Math.round(b.hp + g.hp * L + e.hp + a.hp); p.maxMp = Math.round(b.mp + g.mp * L + a.mp);
-    p.atk = (b.atk + g.atk * L + e.atk + a.atk) * (1 + e.atkPct / 100);
+    p.maxHp = Math.round((b.hp + g.hp * L + e.hp + a.hp) * (1 + a.hpPct / 100)); p.maxMp = Math.round(b.mp + g.mp * L + a.mp);
+    p.atk = (b.atk + g.atk * L + e.atk + a.atk) * (1 + (e.atkPct + a.atkPct) / 100);
     p.def = b.def + g.def * L + e.def + a.def;
     p.crit = b.crit + (e.crit + a.crit) / 100;
     p.speed = b.speed * (1 + (e.speedPct + a.speedPct) / 100);
     p.cdr = Math.min(40, e.cdr + a.cdr);
     p.mpRegenBonus = e.mpRegen + a.mpRegen;
+    p.lifesteal = e.lifesteal + a.lifesteal;
+    p.critMult = p.cls.critMult + a.critMult;
+    p.dodgeCdMax = Math.max(0.4, TW.DODGE.cd + a.dodgeCd);
     if (fill) { p.hp = p.maxHp; p.mp = p.maxMp; }
     else { p.hp = Math.min(p.maxHp, Math.max(1, Math.round(ratio * p.maxHp))); p.mp = Math.min(p.mp, p.maxMp); }
   }
@@ -309,9 +319,10 @@
       p.exp -= TW.expToNext(p.level);
       p.level++;
       p.points += TW.POINTS_PER_LEVEL;
+      p.skillPoints += TW.SKILL_POINTS_PER_LEVEL;
       recalc(p, true);
-      UI.setPoints(p.points);
-      UI.toast('เลื่อนระดับ', 'Lv ' + p.level, '+' + TW.POINTS_PER_LEVEL + ' แต้มคุณสมบัติ (กด I เพื่อลงแต้ม) · พลังชีวิตและพลังเวทฟื้นเต็ม', 'level');
+      UI.setPoints(p.points + p.skillPoints);
+      UI.toast('เลื่อนระดับ', 'Lv ' + p.level, '+' + TW.POINTS_PER_LEVEL + ' แต้มคุณสมบัติ (I) · +' + TW.SKILL_POINTS_PER_LEVEL + ' แต้มทักษะ (K) · พลังชีวิตและพลังเวทฟื้นเต็ม', 'level');
       fxRing(p.pos.x, p.pos.y, p.pos.z, 4, 0xd4a64a, 0.7);
       Particles.burst(p.pos.x, p.pos.y + 1, p.pos.z, 0xd4a64a, 60, 6, 1.1, 4, 4);
     }
@@ -488,11 +499,12 @@
     },
     ember: function (p, s, dir) {
       act(p, 'cast', 0.25);
-      spawnProj({ x: p.pos.x + dir.x * 0.8, z: p.pos.z + dir.z * 0.8, h: 1.4, dx: dir.x, dz: dir.z, speed: s.speed, range: s.range, owner: 'player', kind: 'ember', mult: s.mult, radius: 0.7 });
+      spawnProj({ x: p.pos.x + dir.x * 0.8, z: p.pos.z + dir.z * 0.8, h: 1.4, dx: dir.x, dz: dir.z, speed: s.speed, range: s.range, owner: 'player', kind: 'ember', mult: s.mult, radius: 0.7 + (s.radius || 0),
+        opts: s.burn ? { poison: { t: 3, dps: p.atk * 0.25, kind: 'burn' } } : undefined });
     },
     nova: function (p, s) {
       act(p, 'raise', 0.4);
-      hitCircle(p.pos, s.radius, s.mult, { slow: { t: s.slowDur, f: s.slowF } });
+      hitCircle(p.pos, s.radius, s.mult, { slow: { t: s.slowDur, f: s.slowF }, stun: s.stun || 0 });
       fxRing(p.pos.x, p.pos.y, p.pos.z, s.radius, 0x9fd4e8, 0.55);
       Particles.burst(p.pos.x, p.pos.y + 0.5, p.pos.z, 0xbfe8f5, 70, 9, 0.9, 3, 2);
     },
@@ -517,18 +529,21 @@
       p.pos.y = World.heightAt(p.pos.x, p.pos.z);
       cam.target.set(p.pos.x, p.pos.y + 1.4, p.pos.z);
       Particles.burst(p.pos.x, p.pos.y + 1, p.pos.z, 0x7fd6c0, 30, 4, 0.5, 0, 1);
+      if (s.blinkBlast) { hitCircle(p.pos, 3, 1.0, { knock: 1 }); fxRing(p.pos.x, p.pos.y, p.pos.z, 3, 0xb57bff, 0.4); }
       act(p, 'cast', 0.2);
     },
     arrow: function (p, s, dir) {
       act(p, 'bow', 0.25);
-      spawnProj({ x: p.pos.x + dir.x * 0.6, z: p.pos.z + dir.z * 0.6, h: 1.4, dx: dir.x, dz: dir.z, speed: s.speed, range: s.range, owner: 'player', kind: 'arrow', mult: s.mult, radius: 0.5 });
+      spawnProj({ x: p.pos.x + dir.x * 0.6, z: p.pos.z + dir.z * 0.6, h: 1.4, dx: dir.x, dz: dir.z, speed: s.speed, range: s.range, owner: 'player', kind: 'arrow', mult: s.mult, radius: 0.5,
+        pierce: !!s.pierce, opts: p.flags.arrowPoison ? { poison: { t: 3, dps: p.atk * 0.2 } } : undefined });
     },
     fan: function (p, s, dir) {
       act(p, 'bow', 0.3);
       var base = Math.atan2(dir.x, dir.z), sp = s.spread * Math.PI / 180;
       for (var i = 0; i < s.count; i++) {
         var a = base - sp / 2 + sp * i / (s.count - 1);
-        spawnProj({ x: p.pos.x, z: p.pos.z, h: 1.4, dx: Math.sin(a), dz: Math.cos(a), speed: s.speed, range: s.range, owner: 'player', kind: 'arrow', mult: s.mult, radius: 0.5 });
+        spawnProj({ x: p.pos.x, z: p.pos.z, h: 1.4, dx: Math.sin(a), dz: Math.cos(a), speed: s.speed, range: s.range, owner: 'player', kind: 'arrow', mult: s.mult, radius: 0.5,
+          opts: p.flags.arrowPoison ? { poison: { t: 3, dps: p.atk * 0.2 } } : undefined });
       }
     },
     rain: function (p, s, dir) {
@@ -539,11 +554,12 @@
     },
     leap: function (p, s, dir) {
       p.dash = { dx: -dir.x, dz: -dir.z, left: s.dist, total: s.dist, speed: 30, hit: [], noHit: true, hop: true, color: 0x9fd4e8 };
+      if (s.leapReset) p.cds[0] = 0;
       act(p, 'leap', 0.35);
     },
     stab: function (p, s, dir) {
       act(p, 'stab', 0.22);
-      after(0.06, function () { if (p.dead) return; hitArc(p, dir, s.range, s.arc, s.mult, {}); fxArc(p.pos.x, p.pos.y, p.pos.z, p.facing, s.range, s.arc, 0xb9a0d0); });
+      after(0.06, function () { if (p.dead) return; hitArc(p, dir, s.range, s.arc, s.mult, s.bleed ? { poison: { t: 3, dps: p.atk * 0.2, kind: 'bleed' } } : {}); fxArc(p.pos.x, p.pos.y, p.pos.z, p.facing, s.range, s.arc, 0xb9a0d0); });
     },
     shadowstep: function (p, s) {
       var best = null, bd = 1e9;
@@ -583,10 +599,28 @@
     },
   };
 
+  /* ---- skill tree: unlocked nodes, effective skill numbers ---- */
+  function nodeList(p) {
+    var out = [], tree = TW.TREES[p.cls.id] || [];
+    for (var b = 0; b < tree.length; b++) for (var t = 0; t < tree[b].nodes.length; t++) if (p.skills.unlocked[tree[b].nodes[t].id]) out.push(tree[b].nodes[t]);
+    return out;
+  }
+  /* a copy of the skill with every unlocked node's mod added and its flags set */
+  function eff(p, s) {
+    var o = Object.assign({}, s), nodes = nodeList(p);
+    for (var i = 0; i < nodes.length; i++) {
+      var n = nodes[i];
+      if (n.skill !== s.id) continue;
+      if (n.mod) Object.keys(n.mod).forEach(function (k) { o[k] = (o[k] || 0) + n.mod[k]; });
+      if (n.flag) o[n.flag] = true;
+    }
+    if (o.cd != null) o.cd = Math.max(0.2, o.cd);
+    return o;
+  }
   function useSkill(i) {
     var p = player;
     if (!p || p.dead || G.paused || G.panel || G.mode !== 'game' || G.dialogOpen) return;
-    var s = p.cls.skills[i];
+    var s = eff(p, p.cls.skills[i]);
     if (p.cds[i] > 0 || p.dash) return;
     if (p.mp < s.mp) { if (i > 0) UI.floater(p.pos.x, p.pos.y + 2.4, p.pos.z, 'MP ไม่พอ', 'info'); return; }
     if (i === 0 && p.anim.act && p.anim.act.type === 'raise') return;
@@ -622,7 +656,7 @@
     if (l < 0.08) { dx = Math.sin(p.facing); dz = Math.cos(p.facing); l = 1; }
     dx /= l; dz /= l;
     p.dash = { dx: dx, dz: dz, left: D.dist, total: D.dist, speed: D.speed, hit: [], noHit: true, color: 0xebe2c9 };
-    p.dodgeCd = D.cd;
+    p.dodgeCd = p.dodgeCdMax || D.cd;
     p.targetFacing = p.facing = Math.atan2(dx, dz);
     act(p, 'roll', D.dist / D.speed);
     Particles.burst(p.pos.x, p.pos.y + 0.3, p.pos.z, 0x9a948a, 14, 3, 0.5, 2, 1);
@@ -658,30 +692,34 @@
     var p = player, crit = opts.crit || Math.random() < p.crit, mult = 1;
     if (p.buffs.vanish) { crit = true; mult *= p.buffs.vanish.bonus; endBuff(p, 'vanish'); }
     var dmg = raw * rand(0.9, 1.1) * 40 / (40 + m.def.def) * mult;
-    if (crit) dmg *= p.cls.critMult;
+    if (crit) dmg *= p.critMult;
     dmg = Math.max(1, Math.round(dmg));
     m.hp -= dmg;
     m.flash = 0.12;
     m.lastHit = G.time;
-    if (p.bonus.lifesteal > 0 && p.hp < p.maxHp) p.hp = Math.min(p.maxHp, p.hp + dmg * p.bonus.lifesteal / 100);
+    if (p.lifesteal > 0 && p.hp < p.maxHp) p.hp = Math.min(p.maxHp, p.hp + dmg * p.lifesteal / 100);
     if (crit) G.hitstop = Math.max(G.hitstop, 0.04);
     if (m.elite && m.elite.reflect && !opts.dot) damagePlayer(dmg * m.elite.reflect, m, true);
     UI.floater(m.pos.x + rand(-0.4, 0.4), m.pos.y + m.def.height * 0.85, m.pos.z, dmg, crit ? 'crit' : 'hit');
     Particles.burst(m.pos.x, m.pos.y + m.def.height * 0.5, m.pos.z, crit ? 0xd4a64a : 0xebe2c9, crit ? 18 : 8, 4, 0.4, 5);
     if (opts.slow) m.slow = { t: opts.slow.t, f: opts.slow.f };
     if (opts.stun && !m.def.boss) { m.stun = Math.max(m.stun, opts.stun); if (m.state === 'windup') m.state = 'chase'; }
-    if (opts.poison) m.poison = { t: opts.poison.t, dps: opts.poison.dps, acc: 0 };
+    if (opts.poison) m.poison = { t: opts.poison.t, dps: opts.poison.dps, acc: 0, kind: opts.poison.kind || 'poison' };
+    else if (p.flags.venomTouch && !opts.dot && Math.random() < 0.2) m.poison = { t: 3, dps: p.atk * 0.25, acc: 0, kind: 'poison' };
     if (opts.knock && !m.def.boss) { var dx = m.pos.x - p.pos.x, dz = m.pos.z - p.pos.z, l = Math.sqrt(dx * dx + dz * dz) || 1; m.knock = { x: dx / l * 9, z: dz / l * 9, t: 0.25 }; }
     aggro(m);
     if (m.def.boss && !m.enraged && m.hp < m.maxHp * 0.5) { m.enraged = true; UI.toast('', 'ธอร์นฮาร์ตคลั่ง', 'หัวใจของมันเต้นเร็วขึ้น โจมตีถี่ขึ้น และยิงหนามรอบตัว', 'quiet'); Particles.burst(m.pos.x, m.pos.y + 4.5, m.pos.z, 0xff6a2a, 80, 8, 1, 3, 3); }
     if (m.hp <= 0) killMonster(m);
   }
-  function dotMonster(m, dmg) {
+  var DOT_COLOR = { poison: 0x9ad14b, burn: 0xff8a3c, bleed: 0xe4683a };
+  function dotMonster(m, dmg, kind) {
     if (!m.alive) return;
     dmg = Math.max(1, Math.round(dmg));
     m.hp -= dmg;
-    UI.floater(m.pos.x + rand(-0.4, 0.4), m.pos.y + m.def.height * 0.85, m.pos.z, dmg, 'dot');
-    Particles.burst(m.pos.x, m.pos.y + m.def.height * 0.5, m.pos.z, 0x9ad14b, 4, 2, 0.5, 0, 2);
+    m.lastHit = G.time;
+    var col = DOT_COLOR[kind] || DOT_COLOR.poison;
+    UI.floater(m.pos.x + rand(-0.4, 0.4), m.pos.y + m.def.height * 0.85, m.pos.z, dmg, 'dot', '#' + ('000000' + col.toString(16)).slice(-6));
+    Particles.burst(m.pos.x, m.pos.y + m.def.height * 0.5, m.pos.z, col, 4, 2, 0.5, 0, 2);
     if (m.hp <= 0) killMonster(m);
   }
   /* flat = skip the defence formula (reflected damage) */
@@ -694,6 +732,7 @@
     p.hp -= dmg;
     p.lastHurt = G.time;
     p.hurtFlash = 0.12;
+    if (!flat && p.buffs.ironwill && p.flags.ironReflect && src && src.model && src.alive) dotMonster(src, dmg * 0.3, 'bleed');
     Models.tint(p.model, 0xe4683a, 0.9);
     UI.floater(p.pos.x, p.pos.y + 2.5, p.pos.z, dmg, 'hurt');
     UI.hurt();
@@ -988,7 +1027,7 @@
     if (m.lunge > 0) m.lunge -= dt;
     if (m.poison) {
       m.poison.acc += dt; m.poison.t -= dt;
-      if (m.poison.acc >= 0.5) { m.poison.acc -= 0.5; dotMonster(m, m.poison.dps * 0.5); if (!m.alive) return; }
+      if (m.poison.acc >= 0.5) { m.poison.acc -= 0.5; dotMonster(m, m.poison.dps * 0.5, m.poison.kind); if (!m.alive) return; }
       if (m.poison.t <= 0) m.poison = null;
     }
     var slowF = 1;
@@ -1419,6 +1458,16 @@
       TW.ATTRS.forEach(function (a) { var n = restore.attrs && restore.attrs[a.id] > 0 ? Math.floor(restore.attrs[a.id]) : 0; player.attrs[a.id] = n; spent += n; });
       if (spent > budget) { TW.ATTRS.forEach(function (a) { player.attrs[a.id] = 0; }); spent = 0; }
       player.points = Math.max(0, budget - spent);
+      /* skill nodes: keep only real ids in tier order, within the level's budget */
+      var skillBudget = (player.level - 1) * TW.SKILL_POINTS_PER_LEVEL, savedNodes = Array.isArray(restore.skills) ? restore.skills : [], used = 0;
+      player.skills.unlocked = {};
+      (TW.TREES[player.cls.id] || []).forEach(function (br) {
+        for (var t = 0; t < br.nodes.length; t++) {
+          if (savedNodes.indexOf(br.nodes[t].id) < 0 || used >= skillBudget) break;
+          player.skills.unlocked[br.nodes[t].id] = true; used++;
+        }
+      });
+      player.skillPoints = Math.max(0, skillBudget - used);
       recalc(player, true);
       G.victoryShown = G.quest.idx >= TW.QUESTS.length;
       if (restore.x != null) { player.pos.set(restore.x, 0, restore.z); player.pos.y = World.heightAt(restore.x, restore.z); }
@@ -1434,7 +1483,7 @@
     cam.yaw = 0; cam.shake = 0;
     cam.target.set(player.pos.x, player.pos.y + 1.4, player.pos.z);
     UI.setupHUD(player);
-    UI.setPoints(player.points);
+    UI.setPoints(player.points + player.skillPoints);
     refreshQuestHud();
     UI.zone(World.zoneAt(player.pos.x, player.pos.z));
     UI.screen('game');
@@ -1564,6 +1613,50 @@
       attrs: TW.ATTRS.map(function (a) { return { id: a.id, th: a.th, desc: a.desc, value: p.attrs[a.id] || 0 }; }),
       points: p.points, respecCost: cost, canRespec: spent > 0 && p.gold >= cost,
     });
+    renderSkillTree();
+    UI.panelTab(G.panelTab);
+  }
+  /* ---- skill tree panel ---- */
+  function nodeState(p, br, t) {
+    var n = br.nodes[t];
+    if (p.skills.unlocked[n.id]) return 'unlocked';
+    if (t === 0 || p.skills.unlocked[br.nodes[t - 1].id]) return 'available';
+    return 'locked';
+  }
+  function renderSkillTree() {
+    var p = player, tree = TW.TREES[p.cls.id] || [], cost = TW.RESPEC_COST * p.level, spent = nodeList(p).length;
+    UI.skillTree({
+      branches: tree.map(function (br) { return { th: br.th, nodes: br.nodes.map(function (n, t) { return { id: n.id, th: n.th, desc: n.desc, state: nodeState(p, br, t) }; }) }; }),
+      points: p.skillPoints, respecCost: cost, canRespec: spent > 0 && p.gold >= cost,
+    });
+  }
+  function unlockNode(id) {
+    var p = player, tree = TW.TREES[p.cls.id] || [];
+    if (p.skillPoints <= 0) return;
+    for (var b = 0; b < tree.length; b++) for (var t = 0; t < tree[b].nodes.length; t++) {
+      if (tree[b].nodes[t].id !== id) continue;
+      if (nodeState(p, tree[b], t) !== 'available') return;
+      p.skills.unlocked[id] = true;
+      p.skillPoints--;
+      recalc(p, false);
+      UI.setPoints(p.points + p.skillPoints);
+      UI.toast('', tree[b].nodes[t].th, tree[b].nodes[t].desc, 'quiet');
+      renderInventory();
+      saveGame();
+      return;
+    }
+  }
+  function respecSkills() {
+    var p = player, cost = TW.RESPEC_COST * p.level, spent = nodeList(p).length;
+    if (!spent || p.gold < cost) return;
+    p.gold -= cost;
+    p.skillPoints += spent;
+    p.skills.unlocked = {};
+    recalc(p, false);
+    UI.setPoints(p.points + p.skillPoints);
+    UI.toast('', 'ล้างทักษะแล้ว', 'ได้แต้มทักษะคืน ' + spent + ' แต้ม', 'quiet');
+    renderInventory();
+    saveGame();
   }
   function addAttr(id) {
     var p = player;
@@ -1571,7 +1664,7 @@
     p.attrs[id] = (p.attrs[id] || 0) + 1;
     p.points--;
     recalc(p, false);
-    UI.setPoints(p.points);
+    UI.setPoints(p.points + p.skillPoints);
     renderInventory();
     saveGame();
   }
@@ -1583,16 +1676,19 @@
     p.points += spent;
     TW.ATTRS.forEach(function (a) { p.attrs[a.id] = 0; });
     recalc(p, false);
-    UI.setPoints(p.points);
+    UI.setPoints(p.points + p.skillPoints);
     UI.toast('', 'ล้างแต้มแล้ว', 'ได้แต้มคืน ' + spent + ' แต้ม', 'quiet');
     renderInventory();
     saveGame();
   }
-  function toggleInventory(on) {
+  /* tab = 'char' | 'skills'; pressing the other tab's key while open just switches tabs */
+  function toggleInventory(on, tab) {
     if (G.mode !== 'game' || !player) return;
+    if (G.panel && on == null && tab && tab !== G.panelTab) { G.panelTab = tab; renderInventory(); return; }
     if (on == null) on = !G.panel;
     if (on && (player.dead || G.paused || UI.anyOverlay())) return;
     G.panel = on ? 'inventory' : null;
+    if (tab) G.panelTab = tab;
     input.keys = {}; input.lDown = false; input.rDown = false; input.attackHold = false;
     if (on) { G.invSel = null; UI.setBagNew(false); if (G.dialogOpen) closeDialog(); renderInventory(); }
     else UI.inventory(false);
@@ -1753,7 +1849,8 @@
     if (e.repeat) return;
     if (G.mode === 'game') {
       if (e.code === 'Escape') { if (G.panel) { toggleInventory(false); return; } if (G.dialogOpen) { closeDialog(); return; } if (UI.anyOverlay() && !G.paused) return; togglePause(); }
-      if (e.code === 'KeyI' || e.code === 'KeyC') { toggleInventory(); return; }
+      if (e.code === 'KeyI' || e.code === 'KeyC') { toggleInventory(undefined, 'char'); return; }
+      if (e.code === 'KeyK') { toggleInventory(undefined, 'skills'); return; }
       if (G.paused || G.panel || player.dead) return;
       if (e.code === 'Space') { if (G.dialogOpen) closeDialog(); else if (npcInRange()) openDialog(); else openTravel(); return; }
       if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') { dodge(); return; }
@@ -1850,6 +1947,7 @@
   UI.on('dialog', dialogAction);
   UI.on('inventory', function (on) { toggleInventory(on === false ? false : undefined); });
   UI.on('dodge', dodge);
+  UI.on('panel-tab', function (tab) { if (G.panel) { G.panelTab = tab; renderInventory(); } });
   UI.on('inv-select', function (uid) { G.invSel = { uid: uid }; renderInventory(); });
   UI.on('inv-select-equip', function (slot) { G.invSel = { slot: slot }; renderInventory(); });
   UI.on('inv-act', function (act, id) {
@@ -1858,6 +1956,8 @@
     else if (act === 'drop') discardItem(id);
     else if (act === 'attr') addAttr(id);
     else if (act === 'respec') respecAttrs();
+    else if (act === 'node') unlockNode(id);
+    else if (act === 'respec-skills') respecSkills();
   });
   UI.on('start', showClass);
   UI.on('back', showTitle);
@@ -1957,7 +2057,7 @@
   /* =============== boot =============== */
   function snapshot() {
     if (G.mode !== 'game' || !player) return {};
-    return { cls: player.cls.id, name: player.name, level: player.level, exp: player.exp, gold: player.gold, potions: player.potions, quest: G.quest, kills: G.stats.kills, x: player.pos.x, z: player.pos.z, elapsed: G.time - G.stats.start, inventory: player.inventory, equip: player.equip, attrs: player.attrs, points: player.points, waystones: Object.keys(G.waystones) };
+    return { cls: player.cls.id, name: player.name, level: player.level, exp: player.exp, gold: player.gold, potions: player.potions, quest: G.quest, kills: G.stats.kills, x: player.pos.x, z: player.pos.z, elapsed: G.time - G.stats.start, inventory: player.inventory, equip: player.equip, attrs: player.attrs, points: player.points, waystones: Object.keys(G.waystones), skills: Object.keys(player.skills.unlocked), skillPoints: player.skillPoints };
   }
   var autoT = 0;
   function debugAuto(dt) {
@@ -2005,6 +2105,8 @@
     waystones: function () { return World.waystones; },
     openTravel: openTravel,
     travelTo: travelTo,
+    eff: function (i) { return player ? eff(player, player.cls.skills[i]) : null; },
+    unlockNode: unlockNode,
     forceQuestComplete: function () { var q = TW.QUESTS[G.quest.idx]; if (q && G.quest.state === 'active') { G.quest.progress = q.count - 1; questProgress(q.target); } },
     forceDeath: function () { if (player && !player.dead) { player.hp = 0; playerDie(); } },
     forceBossKill: function () { for (var i = 0; i < monsters.length; i++) if (monsters[i].def.boss && monsters[i].alive) { monsters[i].hp = 0; killMonster(monsters[i]); } },
