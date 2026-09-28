@@ -235,6 +235,7 @@
         sun.position.set(f.x + SUN_DIR.x * 140, f.y + SUN_DIR.y * 140, f.z + SUN_DIR.z * 140);
         sun.target.position.copy(f);
         for (var i = 0; i < anim.length; i++) anim[i](dt, t);
+        for (var w = 0; w < windUniforms.length; w++) windUniforms[w].value = t;
       },
       sunTo: function (cameraPos) { sky.position.copy(cameraPos); },
     };
@@ -259,8 +260,56 @@
     return m;
   }
 
+  /* Concatenate several primitives into one geometry so a whole canopy or boulder
+     is a single instanced draw. Flat shading recomputes normals per face anyway. */
+  function merge(list) {
+    var parts = list.map(function (g) { return g.index ? g.toNonIndexed() : g; });
+    var n = 0;
+    parts.forEach(function (g) { n += g.attributes.position.array.length; });
+    var P = new Float32Array(n), N = new Float32Array(n), o = 0;
+    parts.forEach(function (g) { P.set(g.attributes.position.array, o); N.set(g.attributes.normal.array, o); o += g.attributes.position.array.length; });
+    var out = new T.BufferGeometry();
+    out.setAttribute('position', new T.BufferAttribute(P, 3));
+    out.setAttribute('normal', new T.BufferAttribute(N, 3));
+    return out;
+  }
+  function at(geo, x, y, z, rx, ry, rz, s) {
+    if (s) geo.scale(s[0], s[1], s[2]);
+    if (rx || ry || rz) { geo.rotateX(rx || 0); geo.rotateY(ry || 0); geo.rotateZ(rz || 0); }
+    geo.translate(x, y, z);
+    return geo;
+  }
+
+  /* Wind: sways vertices in proportion to their height, phased by instance position. */
+  var windUniforms = [];
+  W.wind = windUniforms;
+  function windy(mat, strength) {
+    mat.onBeforeCompile = function (shader) {
+      shader.uniforms.uTime = { value: 0 };
+      shader.vertexShader = shader.vertexShader
+        .replace('#include <common>', '#include <common>\nuniform float uTime;')
+        .replace('#include <begin_vertex>', [
+          '#include <begin_vertex>',
+          '{',
+          '  #ifdef USE_INSTANCING',
+          '  vec3 wp = instanceMatrix[3].xyz;',
+          '  #else',
+          '  vec3 wp = vec3(0.0);',
+          '  #endif',
+          '  float sw = sin(uTime * 1.4 + wp.x * 0.35 + wp.z * 0.25) * ' + strength.toFixed(3) + ' * max(0.0, position.y);',
+          '  transformed.x += sw; transformed.z += sw * 0.6;',
+          '}'].join('\n'));
+      windUniforms.push(shader.uniforms.uTime);
+    };
+    mat.customProgramCacheKey = function () { return 'wind' + strength; };
+    return mat;
+  }
+  function leafMat(strength) {
+    return windy(new T.MeshStandardMaterial({ color: 0xffffff, roughness: 0.9, flatShading: true }), strength);
+  }
+
   function buildVegetation(scene) {
-    var pines = [], broads = [], deads = [];
+    var pines = [], broads = [], deads = [], bushes = [], stumps = [], logs = [], shrooms = [];
     for (var gx = -232; gx <= 232; gx += 6) for (var gz = -232; gz <= 232; gz += 6) {
       var x = gx + (rnd() - 0.5) * 5.5, z = gz + (rnd() - 0.5) * 5.5;
       var r = Math.sqrt(x * x + z * z);
@@ -271,41 +320,94 @@
         if (rnd() < 0.12) deads.push({ x: x, z: z, y: heightAt(x, z) - 0.3, s: 0.8 + rnd() * 0.6, rot: rnd() * 6.28, tx: (rnd() - 0.5) * 0.2, tz: (rnd() - 0.5) * 0.2 });
         continue;
       }
-      var p = forestMask(x, z) * 0.85 + 0.035 + edge * 0.3;
-      if (rnd() > p) continue;
+      var fm = forestMask(x, z);
+      var p = fm * 0.85 + 0.035 + edge * 0.3;
       var h = heightAt(x, z);
+      if (rnd() > p) {
+        /* no tree here: maybe undergrowth at the forest edge or a stump/log inside the wood */
+        if (fm > 0.12 && fm < 0.7 && rnd() < 0.35 && h < 30) bushes.push({ x: x + (rnd() - 0.5) * 3, z: z + (rnd() - 0.5) * 3, y: h - 0.1, s: 0.7 + rnd() * 0.8, rot: rnd() * 6.28 });
+        else if (fm > 0.4 && rnd() < 0.12 && h < 30) {
+          if (rnd() < 0.5) stumps.push({ x: x, z: z, y: h - 0.1, s: 0.8 + rnd() * 0.6, rot: rnd() * 6.28 });
+          else { logs.push({ x: x, z: z, y: h + 0.28, s: 0.8 + rnd() * 0.5, rot: rnd() * 6.28, tz: Math.PI / 2, tx: (rnd() - 0.5) * 0.15 }); addCollider(x, z, 1.2); }
+        }
+        continue;
+      }
       if (h > 32) continue;
       var pine = zoneW('pines', x, z) > 0.2 || edge > 0.25 || fbm(x * 0.02, z * 0.02, 2) > 0.52;
       var s = 0.75 + rnd() * 0.75;
       (pine && rnd() < 0.85 ? pines : broads).push({ x: x, z: z, y: h - 0.2, s: s, rot: rnd() * 6.28 });
       addCollider(x, z, 0.55 * s + 0.15);
+      if (pine && rnd() < 0.22) {
+        var n = 1 + Math.floor(rnd() * 3);
+        for (var k = 0; k < n; k++) { var mx = x + (rnd() - 0.5) * 2.4, mz = z + (rnd() - 0.5) * 2.4; shrooms.push({ x: mx, z: mz, y: heightAt(mx, mz), s: 0.6 + rnd() * 0.8, rot: rnd() * 6.28 }); }
+      }
     }
-    var trunkM = new T.MeshStandardMaterial({ color: 0x5a4030, roughness: 0.9, flatShading: true });
-    var leafM = new T.MeshStandardMaterial({ color: 0xffffff, roughness: 0.9, flatShading: true });
+    var trunkM = new T.MeshStandardMaterial({ color: 0xffffff, roughness: 0.92, flatShading: true });
+    var barkCol = function (it, c) { return c.setHSL(0.07 + (it.rot % 1) * 0.02, 0.35, 0.2 + ((it.rot * 7) % 1) * 0.08); };
 
-    var pineTrunk = new T.CylinderGeometry(0.22, 0.38, 2.4, 6); pineTrunk.translate(0, 1.2, 0);
-    var pineA = new T.ConeGeometry(1.9, 3.4, 7); pineA.translate(0, 3.5, 0);
-    var pineB = new T.ConeGeometry(1.35, 2.8, 7); pineB.translate(0, 5.4, 0);
-    var pineCol = function (it, c) { return c.setHSL(0.34 + (it.rot % 1) * 0.04, 0.35, 0.2 + (it.s - 0.75) * 0.08); };
-    scene.add(instanced(pineTrunk, trunkM, pines));
-    scene.add(instanced(pineA, leafM, pines, pineCol));
-    scene.add(instanced(pineB, leafM, pines, pineCol));
+    /* pines: tall trunk, three offset tiers */
+    var pineTrunk = at(new T.CylinderGeometry(0.17, 0.4, 3.2, 6), 0, 1.6, 0);
+    var pineCanopy = merge([
+      at(new T.ConeGeometry(2.2, 3.0, 7), 0.05, 3.3, -0.05),
+      at(new T.ConeGeometry(1.65, 2.7, 7), -0.08, 4.9, 0.06, 0, 0.45, 0),
+      at(new T.ConeGeometry(1.1, 2.3, 7), 0.04, 6.3, 0.02, 0, 0.9, 0),
+    ]);
+    var pineCol = function (it, c) { var k = it.rot % 1; return c.setHSL(k < 0.25 ? 0.42 : 0.34 + k * 0.05, 0.36 + k * 0.1, 0.17 + (it.s - 0.75) * 0.09 + k * 0.03); };
+    scene.add(instanced(pineTrunk, trunkM, pines, barkCol));
+    scene.add(instanced(pineCanopy, leafMat(0.03), pines, pineCol));
 
-    var broadTrunk = new T.CylinderGeometry(0.3, 0.42, 2.6, 6); broadTrunk.translate(0, 1.3, 0);
-    var crown = new T.IcosahedronGeometry(2.1, 0); crown.translate(0, 3.9, 0);
+    /* broadleaf: a canopy of four blobs, lighter towards the crown */
+    var broadTrunk = merge([
+      at(new T.CylinderGeometry(0.26, 0.48, 3.0, 6), 0, 1.5, 0),
+      at(new T.CylinderGeometry(0.1, 0.16, 1.6, 5), 0.55, 3.2, 0.1, 0, 0, -0.7),
+      at(new T.CylinderGeometry(0.09, 0.15, 1.5, 5), -0.5, 3.3, -0.2, 0.5, 0, 0.7),
+    ]);
+    var broadCanopy = merge([
+      at(new T.IcosahedronGeometry(1.95, 1), 0, 4.2, 0, 0, 0, 0, [1, 0.88, 1]),
+      at(new T.IcosahedronGeometry(1.35, 1), 1.05, 4.9, 0.45),
+      at(new T.IcosahedronGeometry(1.25, 1), -1.0, 4.7, -0.55),
+      at(new T.IcosahedronGeometry(1.05, 1), 0.2, 5.75, -0.25),
+      at(new T.IcosahedronGeometry(0.95, 1), -0.3, 4.4, 1.15),
+    ]);
     var broadCol = function (it, c) {
       var k = it.rot % 1;
-      return k < 0.18 ? c.setHSL(0.09, 0.55, 0.4) : c.setHSL(0.22 + k * 0.05, 0.45, 0.3);
+      if (k < 0.16) return c.setHSL(0.06 + k * 0.25, 0.6, 0.42);
+      return c.setHSL(0.21 + k * 0.09, 0.48, 0.3 + ((it.rot * 3) % 1) * 0.1);
     };
-    scene.add(instanced(broadTrunk, trunkM, broads));
-    scene.add(instanced(crown, leafM, broads, broadCol));
+    scene.add(instanced(broadTrunk, trunkM, broads, barkCol));
+    scene.add(instanced(broadCanopy, leafMat(0.035), broads, broadCol));
 
-    var deadTrunk = new T.CylinderGeometry(0.12, 0.42, 5.5, 5); deadTrunk.translate(0, 2.7, 0);
-    var deadM = new T.MeshStandardMaterial({ color: 0x3b3128, roughness: 0.95, flatShading: true });
-    scene.add(instanced(deadTrunk, deadM, deads));
+    /* dead swamp trees with two bare branches */
+    var deadTree = merge([
+      at(new T.CylinderGeometry(0.1, 0.45, 6, 5), 0, 2.9, 0),
+      at(new T.CylinderGeometry(0.04, 0.12, 2.4, 4), 0.6, 4.6, 0.1, 0, 0, -0.9),
+      at(new T.CylinderGeometry(0.04, 0.1, 1.9, 4), -0.45, 3.9, -0.2, 0.6, 0, 0.8),
+    ]);
+    scene.add(instanced(deadTree, new T.MeshStandardMaterial({ color: 0x3b3128, roughness: 0.95, flatShading: true }), deads));
     deads.forEach(function (d) { addCollider(d.x, d.z, 0.5); });
 
-    /* grass tufts and meadow flowers */
+    /* undergrowth, stumps, logs, mushrooms */
+    var bush = merge([
+      at(new T.IcosahedronGeometry(0.8, 1), 0, 0.6, 0, 0, 0, 0, [1, 0.8, 1]),
+      at(new T.IcosahedronGeometry(0.6, 1), 0.55, 0.5, 0.35),
+      at(new T.IcosahedronGeometry(0.55, 1), -0.5, 0.55, -0.25),
+    ]);
+    var bushMesh = instanced(bush, leafMat(0.06), bushes, function (it, c) { return c.setHSL(0.24 + (it.rot % 1) * 0.08, 0.45, 0.27 + ((it.rot * 5) % 1) * 0.08); });
+    scene.add(bushMesh);
+    var stumpGeo = merge([at(new T.CylinderGeometry(0.42, 0.6, 0.7, 7), 0, 0.35, 0), at(new T.CylinderGeometry(0.34, 0.34, 0.06, 7), 0, 0.72, 0)]);
+    scene.add(instanced(stumpGeo, trunkM, stumps, function (it, c) { return c.setHSL(0.08, 0.3, 0.26); }));
+    var logGeo = at(new T.CylinderGeometry(0.3, 0.36, 3.4, 6), 0, 0, 0);
+    scene.add(instanced(logGeo, trunkM, logs, function (it, c) { return c.setHSL(0.07, 0.32, 0.22); }));
+    var stemGeo = at(new T.CylinderGeometry(0.07, 0.1, 0.34, 5), 0, 0.17, 0);
+    var capGeo = at(new T.SphereGeometry(0.24, 8, 5, 0, Math.PI * 2, 0, Math.PI / 2), 0, 0.3, 0, 0, 0, 0, [1, 0.7, 1]);
+    var stemMesh = instanced(stemGeo, new T.MeshStandardMaterial({ color: 0xe8dcc0, roughness: 0.9, flatShading: true }), shrooms);
+    stemMesh.castShadow = false;
+    scene.add(stemMesh);
+    var capMesh = instanced(capGeo, new T.MeshStandardMaterial({ color: 0xffffff, roughness: 0.7, flatShading: true }), shrooms, function (it, c) { var k = it.rot % 1; return k < 0.6 ? c.setHSL(0.01 + k * 0.03, 0.7, 0.42) : c.setHSL(0.08, 0.45, 0.55); });
+    capMesh.castShadow = false;
+    scene.add(capMesh);
+
+    /* grass tufts (three blades each), reeds, meadow flowers */
     var tufts = [], flowers = [], reeds = [];
     var tries = 0;
     while (tufts.length < 4200 && tries++ < 20000) {
@@ -314,16 +416,19 @@
       if (forestMask(x2, z2) > 0.45 || pathDist(x2, z2) < 2 || zoneW('camp', x2, z2, 0.75) > 0.3 || zoneW('mud', x2, z2, 0.8) > 0.3 || zoneW('ruins', x2, z2, 0.75) > 0.3) continue;
       var swk = zoneW('swamp', x2, z2, 0.95);
       if (swk > 0.6) continue;
-      var item = { x: x2, z: z2, y: heightAt(x2, z2), s: 0.7 + rnd() * 0.8, rot: rnd() * 6.28, tx: (rnd() - 0.5) * 0.5, tz: (rnd() - 0.5) * 0.5 };
+      var item = { x: x2, z: z2, y: heightAt(x2, z2), s: 0.7 + rnd() * 0.8, rot: rnd() * 6.28, tx: (rnd() - 0.5) * 0.3, tz: (rnd() - 0.5) * 0.3 };
       if (swk > 0.15) reeds.push(item); else tufts.push(item);
     }
-    var tuftGeo = new T.ConeGeometry(0.16, 0.85, 3); tuftGeo.translate(0, 0.42, 0);
-    var tuftM = new T.MeshStandardMaterial({ color: 0xffffff, roughness: 1, flatShading: true });
-    var tuft = instanced(tuftGeo, tuftM, tufts, function (it, c) { return c.setHSL(0.2 + (it.rot % 1) * 0.06, 0.5, 0.32); });
+    var tuftGeo = merge([
+      at(new T.ConeGeometry(0.13, 0.8, 3), 0, 0.4, 0),
+      at(new T.ConeGeometry(0.1, 0.62, 3), 0.17, 0.3, 0.05, 0, 0, -0.35),
+      at(new T.ConeGeometry(0.1, 0.68, 3), -0.14, 0.33, -0.09, 0, 0, 0.32),
+    ]);
+    var tuft = instanced(tuftGeo, leafMat(0.1), tufts, function (it, c) { return c.setHSL(0.2 + (it.rot % 1) * 0.07, 0.5, 0.3 + ((it.rot * 3) % 1) * 0.06); });
     tuft.castShadow = false;
     scene.add(tuft);
-    var reedGeo = new T.ConeGeometry(0.1, 2.2, 3); reedGeo.translate(0, 1.1, 0);
-    var reed = instanced(reedGeo, tuftM, reeds, function (it, c) { return c.setHSL(0.19, 0.35, 0.28); });
+    var reedGeo = merge([at(new T.ConeGeometry(0.09, 2.2, 3), 0, 1.1, 0), at(new T.ConeGeometry(0.07, 1.7, 3), 0.14, 0.85, 0.06, 0, 0, -0.15)]);
+    var reed = instanced(reedGeo, leafMat(0.08), reeds, function (it, c) { return c.setHSL(0.19, 0.35, 0.28); });
     reed.castShadow = false;
     scene.add(reed);
 
@@ -332,30 +437,47 @@
       var a2 = rnd() * 6.283, r2 = Math.sqrt(rnd()) * 60;
       var fx = Math.cos(a2) * r2, fz = 82 + Math.sin(a2) * r2;
       if (pathDist(fx, fz) < 2.5 || zoneW('camp', fx, fz, 0.9) > 0.2 || forestMask(fx, fz) > 0.3) continue;
-      flowers.push({ x: fx, z: fz, y: heightAt(fx, fz) + 0.35, s: 0.8 + rnd() * 0.6, rot: rnd() * 6.28 });
+      flowers.push({ x: fx, z: fz, y: heightAt(fx, fz), s: 0.8 + rnd() * 0.6, rot: rnd() * 6.28 });
     }
-    var flowerGeo = new T.IcosahedronGeometry(0.16, 0);
-    var flowerM = new T.MeshStandardMaterial({ color: 0xffffff, roughness: 0.8, emissive: 0x222222, flatShading: true });
+    var flowerGeo = merge([at(new T.CylinderGeometry(0.02, 0.03, 0.4, 3), 0, 0.2, 0), at(new T.IcosahedronGeometry(0.15, 0), 0, 0.45, 0)]);
+    var flowerM = windy(new T.MeshStandardMaterial({ color: 0xffffff, roughness: 0.8, emissive: 0x222222, flatShading: true }), 0.12);
     var palette = [0xe8d9a8, 0xd9a441, 0xc9583a, 0xb9a0d0, 0xf0f0e0];
     var fl = instanced(flowerGeo, flowerM, flowers, function (it, c) { return c.setHex(palette[Math.floor((it.rot % 1) * palette.length)]); });
     fl.castShadow = false;
     scene.add(fl);
   }
 
+  /* boulders: two fused lumps, random tilt; about half carry a moss cap (those stay upright) */
   function buildRocks(scene) {
-    var rocks = [];
-    for (var i = 0; i < 320; i++) {
+    var rocks = [], mossy = [], pebbles = [];
+    for (var i = 0; i < 340; i++) {
       var a = rnd() * 6.283, r = 20 + Math.sqrt(rnd()) * 200;
       var x = Math.cos(a) * r, z = Math.sin(a) * r;
       if (pathDist(x, z) < 3 || zoneW('camp', x, z, 0.9) > 0.2 || zoneW('mud', x, z, 0.8) > 0.2 || zoneW('swamp', x, z, 0.9) > 0.3) continue;
       var edge = smooth(160, 215, r);
       var s = 0.4 + rnd() * (1.2 + edge * 2.5);
-      rocks.push({ x: x, z: z, y: heightAt(x, z) - s * 0.25, sx: s * (0.8 + rnd() * 0.6), sy: s * (0.6 + rnd() * 0.5), sz: s * (0.8 + rnd() * 0.6), rot: rnd() * 6.28, tx: (rnd() - 0.5) * 0.4 });
+      var moss = edge < 0.3 && rnd() < 0.5;
+      var it = { x: x, z: z, y: heightAt(x, z) - s * 0.22, sx: s * (0.8 + rnd() * 0.6), sy: s * (0.6 + rnd() * 0.5), sz: s * (0.8 + rnd() * 0.6), rot: rnd() * 6.28, tx: moss ? 0 : (rnd() - 0.5) * 0.6, tz: moss ? 0 : (rnd() - 0.5) * 0.6 };
+      rocks.push(it);
+      if (moss) mossy.push(it);
       if (s > 0.9) addCollider(x, z, s * 0.75);
+      if (rnd() < 0.6) for (var k = 0; k < 3; k++) { var px = x + (rnd() - 0.5) * 4 * s, pz = z + (rnd() - 0.5) * 4 * s; pebbles.push({ x: px, z: pz, y: heightAt(px, pz), s: 0.15 + rnd() * 0.25, rot: rnd() * 6.28, tx: rnd(), tz: rnd() }); }
     }
-    var geo = new T.DodecahedronGeometry(1, 0);
-    var mat = new T.MeshStandardMaterial({ color: 0xffffff, roughness: 0.9, flatShading: true });
-    scene.add(instanced(geo, mat, rocks, function (it, c) { return c.setHSL(0.1, 0.06, 0.36 + (it.rot % 1) * 0.16); }));
+    var rockGeo = merge([
+      new T.DodecahedronGeometry(1, 0),
+      at(new T.DodecahedronGeometry(0.62, 0), 0.72, -0.12, 0.4, 0.4, 0.3, 0),
+      at(new T.DodecahedronGeometry(0.5, 0), -0.6, -0.2, -0.45, 0, 0.7, 0.3),
+    ]);
+    var rockM = new T.MeshStandardMaterial({ color: 0xffffff, roughness: 0.92, flatShading: true });
+    var rockCol = function (it, c) { var k = it.rot % 1; return c.setHSL(0.08 + k * 0.04, 0.07 + k * 0.05, 0.34 + ((it.rot * 3) % 1) * 0.16); };
+    scene.add(instanced(rockGeo, rockM, rocks, rockCol));
+    var mossGeo = at(new T.IcosahedronGeometry(0.95, 1), 0, 0.55, 0, 0, 0, 0, [1.15, 0.38, 1.15]);
+    var mossMesh = instanced(mossGeo, new T.MeshStandardMaterial({ color: 0xffffff, roughness: 0.95, flatShading: true }), mossy, function (it, c) { return c.setHSL(0.27 + (it.rot % 1) * 0.06, 0.4, 0.3); });
+    mossMesh.castShadow = false;
+    scene.add(mossMesh);
+    var pebbleMesh = instanced(new T.DodecahedronGeometry(1, 0), rockM, pebbles, rockCol);
+    pebbleMesh.castShadow = false;
+    scene.add(pebbleMesh);
   }
 
   /* ---------- guild camp (south) ---------- */
