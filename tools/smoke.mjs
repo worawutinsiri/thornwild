@@ -337,9 +337,10 @@ try {
       Object.keys(need.mats).forEach((k) => G.debugMaterial(k, need.mats[k])); p.gold = 5000;
       byId.get('smith').dispatch('click', { target: query(byId.get('smith-grid'), '[data-equip="' + wornSlot + '"]')[0] }); frame(1, 'select worn');
       expect(query(byId.get('smith-card'), '[data-act="upgrade"]').length === 1, 'selecting a worn item shows the upgrade button');
-      const statB = JSON.stringify([p.atk, p.maxHp, p.def, p.crit, p.speed]);
+      /* compare the item's own lines: its main stat may be cdr/gold%/… which the hunter's core stats do not show */
+      const statB = JSON.stringify([sandbox.TW.Items.totals(G.equip()[wornSlot]), p.bonus]);
       byId.get('smith').dispatch('click', { target: query(byId.get('smith-card'), '[data-act="upgrade"]')[0] }); frame(1, 'upgrade');
-      expect(G.equip()[wornSlot].plus === 1 && JSON.stringify([p.atk, p.maxHp, p.def, p.crit, p.speed]) !== statB, 'upgrading a worn item to +1 raises its stats');
+      expect(G.equip()[wornSlot].plus === 1 && JSON.stringify([sandbox.TW.Items.totals(G.equip()[wornSlot]), p.bonus]) !== statB, 'upgrading a worn item to +1 raises its stats');
       expect(JSON.parse(store.get('tw.save.v1')).equip[wornSlot].plus === 1, 'the upgrade is saved');
       key('Escape'); frame(1, 'close smith');
       G.teleport(2, 142); frame(5, 'back');
@@ -361,8 +362,11 @@ try {
       expect(['chase', 'windup', 'lunge'].includes(alpha.state), 'Shadowfang reacts to the hunter (' + alpha.state + ')');
       expect(!byId.get('hud-boss').hidden && byId.get('boss-latin').textContent === 'Shadowfang', 'the boss bar shows the mini-boss');
       const nBefore = G.monsters().length;
+      /* no crit here: a lucky crit can one-shot past the half-health phase */
+      const critWas = G.player().crit; G.player().crit = 0;
       G.hit(alpha, Math.ceil(alpha.hp * 0.8)); frame(3, 'half');
-      expect(alpha.summoned && G.monsters().length >= nBefore + 2, 'Shadowfang calls two wolves at half health');
+      G.player().crit = critWas;
+      expect(alpha.summoned && G.monsters().length >= nBefore + 2, 'Shadowfang calls two wolves at half health (summoned=' + alpha.summoned + ' elite=' + (alpha.elite && alpha.elite.id) + ' hp=' + alpha.hp + '/' + alpha.maxHp + ' n=' + nBefore + '→' + G.monsters().length + ')');
       G.hit(alpha, 99999); frame(3, 'kill alpha');
       expect(G.pickups().length >= 2, 'the mini-boss dropped two items');
       G.teleport(2, 142); frame(5, 'back');
