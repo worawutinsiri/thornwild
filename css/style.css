@@ -883,6 +883,7 @@ kbd {
 .switch { display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: var(--s-1); }
 .switch input { width: 18px; height: 18px; margin: 0; accent-color: var(--verdigris); }
 .switch small { display: block; color: var(--bone-faint); font-size: var(--s-2); }
+.style-switch { padding: 8px 10px; box-shadow: inset 0 0 0 1px var(--line); }
 .settings .btn { min-height: 40px; padding: 0 16px; font-size: var(--s-1); }
 .sheet .save-note { font-size: var(--s-2); color: var(--bone-faint); }
 .tally { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin: 0 0 18px; }

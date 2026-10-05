@@ -449,7 +449,7 @@
     var a = p.anim;
     a.move = lerp(a.move, moving ? 1 : 0, Math.min(1, dt * 10));
     a.walk += dt * (moving ? 11 : 0);
-    var s = Math.sin(a.walk) * 0.8 * a.move;
+    var s = Math.sin(a.walk) * 0.8 * a.move * (h.stride || 1);
     h.legL.rotation.x = s; h.legR.rotation.x = -s;
     var armL = -s * 0.6, armR = s * 0.6, armLz = 0, armRz = 0, twist = 0, lean = a.move * 0.12;
     var bodyY = Math.abs(Math.cos(a.walk)) * 0.07 * a.move + (moving ? 0 : Math.sin(G.time * 2) * 0.015);
@@ -1551,6 +1551,23 @@
     scene.add(preview.root);
     Particles.burst(P.x, y + 1, P.z, 0x6cc2ab, 40, 3, 0.8, 0, 2);
   }
+  /* art style switch (classic low-poly / experimental voxel): rebuilds the preview and the player model in place */
+  function setHeroStyle(style) {
+    Models.setStyle(style);
+    UI.setStyle(Models.style === 'voxel');
+    if (preview) setPreview(G.cls);
+    if (player) {
+      var old = player.model, m = Models.hero(player.cls.id);
+      Models.addXray(m, 0x6cc2ab);
+      m.root.position.copy(old.root.position);
+      m.root.rotation.copy(old.root.rotation);
+      scene.add(m.root);
+      scene.remove(old.root);
+      Models.dispose(old.root);
+      player.model = m;
+      player.hurtFlash = 0;
+    }
+  }
   function startGame(clsId, name, restore) {
     clearPreview();
     camera.clearViewOffset();
@@ -2176,6 +2193,7 @@
   UI.on('continue-save', function () { var s = loadSave(); if (s) startGame(s.cls, s.name || TW.HUNTER_NAMES[0], s); });
   UI.on('delete-save', function () { deleteSave(); UI.showSave(null); });
   UI.on('shadows', applyShadows);
+  UI.on('style', setHeroStyle);
   UI.on('fullscreen', function () {
     var el = document.documentElement, req = el.requestFullscreen || el.webkitRequestFullscreen;
     try {
@@ -2286,6 +2304,7 @@
     UI.init();
     if (qs.touch) UI.setTouch(true);
     UI.setShadows(settings.shadows);
+    UI.setStyle(Models.style === 'voxel');
     UI.initMinimap(World.minimapImage(176, 200), 200);
     populate();
     createNpcs();
@@ -2309,6 +2328,8 @@
     teleport: function (x, z) { if (player) { player.pos.set(x, 0, z); player.pos.y = World.heightAt(x, z); cam.target.set(x, player.pos.y + 1.4, z); } },
     npc: function () { return npc; },
     npcs: function () { return npcs; },
+    preview: function () { return preview; },
+    setStyle: setHeroStyle,
     materials: function () { return player ? player.materials : {}; },
     debugMaterial: function (id, n) { if (player) addMaterial(id, n); },
     pickups: function () { return pickups; },

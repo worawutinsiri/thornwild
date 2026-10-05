@@ -29,6 +29,7 @@ css/style.css    โทนสี, layout, .touch-on (HUD มือถือแ�
 js/data.js       ตัวเลขทั้งหมด (TW.*): CLASSES, MONSTERS, ZONES, QUESTS, NPCS, ITEM_BASES, AFFIXES, SHOP, UPGRADE ...
 js/items.js      TW.Items: roll/lines/totals/bonus/compare/value/upgradeCost
 js/models.js     โมเดล low-poly จาก primitive (hero/monster/npc), x-ray silhouette
+js/voxel.js      ตัวละครแบบ voxel (ทดลอง, branch feature/voxel): วาดใน grid แล้ว mesh + AO, rig ชื่อเดียวกับ models.js
 js/world.js      terrain (value noise, World.heightAt), พืชแบบ instanced+wind, หมู่บ้าน, ค่าย, ซากวิหาร, waystones, colliders
 js/ui.js         DOM/HUD/minimap/floaters/panels (UI.*)
 js/game.js       game loop, player/monster state machines, สกิล, เควสต์, loot, save, click-to-move, TW.Game test hooks
@@ -49,7 +50,7 @@ web.config       IIS static site (MIME/UTF-8/compression)
   `auto=1` ยิงสกิลระหว่างเช็ค (ปิดชั่วคราว), ตีบอสจากไกลทำให้บอส return + leash-heal (teleport ไปใกล้ก่อน),
   ไอเทมดรอปในรัศมีเก็บอัตโนมัติ — เช็คเรื่องพวกนี้ก่อนแก้โค้ดเกม
 - URL flags ตอนพัฒนา: `?class=mage` (ข้ามเมนู), `&auto=1` (ยิงสกิลเอง), `?lite=1` (ปิดเงา), `?touch=1` (บังคับ HUD มือถือ),
-  `?screen=class`
+  `?screen=class`, `?style=voxel` (ตัวละคร voxel; สวิตช์ในหน้าเลือกอาชีพ/เมนูหยุดจำค่าไว้ที่ localStorage `tw.style`)
 
 ## ข้อเท็จจริงทางเทคนิคที่ควรรู้
 

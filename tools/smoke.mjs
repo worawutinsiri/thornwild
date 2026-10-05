@@ -178,10 +178,29 @@ function dlg(act) {
 
 const onlyClass = process.argv[2], onlyFrames = +(process.argv[3] || 900);
 if (onlyClass && onlyClass !== 'flow') sandbox.location.search = '?class=' + onlyClass + '&auto=1';
-for (const f of ['js/data.js', 'js/items.js', 'js/models.js', 'js/world.js', 'js/ui.js', 'js/game.js']) run(f, read(f));
+/* load the same scripts, in the same order, as index.html */
+for (const [, f] of read('index.html').matchAll(/<script src="(js\/[^"]+)"><\/script>/g)) run(f, read(f));
 
 const G = sandbox.TW.Game;
 const expect = (cond, msg) => { if (!cond) failures.push('assert: ' + msg); };
+/* voxel heroes: same rig as the classic ones, sane mesh size, unsupported classes fall back */
+{
+  const Mo = sandbox.TW.Models;
+  expect(Mo.style === 'classic', 'art style defaults to classic');
+  Mo.setStyle('voxel');
+  for (const id of Mo.voxelClasses) {
+    const h = Mo.hero(id);
+    let meshes = 0, tris = 0;
+    h.root.traverse((o) => { if (o.isMesh) { meshes++; tris += o.geometry.attributes.position.count / 3; } });
+    expect(h.style === 'voxel' && ['body', 'head', 'armL', 'armR', 'legL', 'legR', 'handL', 'handR'].every((k) => h[k]), id + ': voxel rig has every pivot');
+    expect(meshes >= 6 && tris > 500 && tris < 40000, id + ': voxel mesh size sane (' + meshes + ' meshes, ' + tris + ' tris)');
+    expect(h.mats.length >= 1 && h.mats.every((m) => m.vertexColors && m.userData.baseEmissive), id + ': voxel materials are tintable vertex-colour materials');
+    if (!onlyClass) console.log('  voxel ' + id + ': ' + meshes + ' meshes, ' + tris + ' triangles');
+  }
+  expect(Mo.hero('ranger').style !== 'voxel', 'classes without a voxel model fall back to classic');
+  Mo.setStyle('classic');
+  store.delete('tw.style');
+}
 try {
   if (onlyClass && onlyClass !== 'flow') {
     frame(onlyFrames, onlyClass);
@@ -199,6 +218,12 @@ try {
       byId.get('class-list').dispatch('click', { target: lic });
       frame(40, 'preview ' + c.id);
       expect(G.state.cls === c.id, 'preview switched to ' + c.id);
+      /* art style switch on the class screen: every class then plays the flow in voxel style */
+      const vox = byId.get('opt-voxel-class');
+      vox.checked = true; vox.dispatch('change'); frame(10, 'voxel preview ' + c.id);
+      const hasVox = sandbox.TW.Models.voxelClasses.includes(c.id);
+      expect(sandbox.TW.Models.style === 'voxel' && byId.get('opt-voxel').checked, 'class-screen switch turns voxel style on');
+      expect((G.preview().style === 'voxel') === hasVox, c.id + ': preview rebuilt in the chosen style');
       byId.get('hunter-name').value = 'ทดสอบ ' + c.id;
       byId.get('oath-form').dispatch('submit');
       expect(G.state.mode === 'game' && G.player().cls.id === c.id, 'oath form starts the game as ' + c.id);
@@ -410,7 +435,11 @@ try {
       click('btn-continue'); frame(30, 'continue ' + c.id);
       const saved = JSON.parse(store.get('tw.save.v1') || 'null');
       expect(saved && saved.cls === c.id && saved.name === 'ทดสอบ ' + c.id && saved.token, c.id + ': save written with class, name, token');
-      click('btn-pause'); click('btn-quit'); frame(30, 'title again');
+      click('btn-pause');
+      expect((G.player().model.style === 'voxel') === hasVox, c.id + ': played the flow in voxel style');
+      const ov = byId.get('opt-voxel'); ov.checked = false; ov.dispatch('change'); frame(5, 'classic again ' + c.id);
+      expect(G.player().model.style !== 'voxel' && !byId.get('opt-voxel-class').checked && G.player().model.root.parent, 'pause-menu switch swaps the hunter back to classic in place');
+      click('btn-quit'); frame(30, 'title again');
       expect(G.state.mode === 'title' && !byId.get('continue-card').hidden, 'title shows the continue card');
       click('btn-continue-save'); frame(120, 'continue-save ' + c.id);
       expect(G.state.mode === 'game' && G.player().name === 'ทดสอบ ' + c.id && G.player().level === saved.level, 'continue restores the saved hunter');

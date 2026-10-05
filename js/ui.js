@@ -98,6 +98,9 @@
     $('btn-continue').addEventListener('click', function () { emit('continue'); });
     $('btn-home').addEventListener('click', function () { emit('quit'); });
     $('opt-shadows').addEventListener('change', function () { emit('shadows', $('opt-shadows').checked); });
+    ['opt-voxel', 'opt-voxel-class'].forEach(function (id) {
+      $(id).addEventListener('change', function () { emit('style', $(id).checked ? 'voxel' : 'classic'); });
+    });
     $('btn-fullscreen').addEventListener('click', function () { emit('fullscreen'); });
     $('btn-continue-save').addEventListener('click', function () { emit('continue-save'); });
     var armed = false;
@@ -501,6 +504,7 @@
     $('btn-new-save').classList.remove('danger');
   };
   UI.setShadows = function (on) { $('opt-shadows').checked = !!on; };
+  UI.setStyle = function (voxel) { $('opt-voxel').checked = $('opt-voxel-class').checked = !!voxel; };
 
   /* ---------- villagers: name tag and conversation ---------- */
   UI.npcLabel = function (show, sx, sy, near, npc) {
